@@ -1,10 +1,22 @@
-# TDB — Tableau de bord de télémétrie OpenClaw
+<div align="center">
 
-Tableau de bord HTML autonome qui visualise l'activité d'une installation
-OpenClaw : tokens, coûts, cache, contexte, agents, journal des actions.
+# 🦞 TDB — Tableau de bord de télémétrie OpenClaw
 
-Aucune dépendance côté serveur : une page HTML, un script PowerShell de
-collecte, et vos données restent sur votre machine.
+**Tableau de bord HTML auto-alimenté pour OpenClaw — tokens, coût, cache, agents, journal des actions**
+
+![Licence](https://img.shields.io/badge/licence-MIT-2dd4bf)
+![Plateforme](https://img.shields.io/badge/plateforme-Windows-38bdf8)
+![OpenClaw](https://img.shields.io/badge/pour-OpenClaw-ff7a45)
+![Graphiques](https://img.shields.io/badge/graphiques-Chart.js-a78bfa)
+![Mode](https://img.shields.io/badge/100%25-local-telemetry-34d399)
+
+![Aperçu du tableau de bord](docs/preview.png)
+
+*Un seul fichier HTML · un script PowerShell déterministe · vos données restent sur votre machine*
+
+</div>
+
+---
 
 ## Fonctionnalités
 
@@ -13,8 +25,8 @@ collecte, et vos données restent sur votre machine.
 - **3 modes de rafraîchissement au choix** : manuel (défaut, 0 token),
   Task Scheduler Windows (0 token, auto), cron OpenClaw — modifiable à chaud
 - **KPI session** : tokens cumulés, coût, cache hit, contexte utilisé, sessions actives
-- **Graphiques** (Chart.js) : tokens dans le temps, cache hit, contexte/fenêtre,
-  répartition des tokens par modèle, événements + requêtes + tokens par heure
+- **Graphiques** (Chart.js) : tokens dans le temps, répartition des tokens par modèle,
+  événements + requêtes + tokens par heure (historique horaire **immortel**)
 - **Journal des actions** paginé (50 par page) : tâche, action/outils appelés,
   agent, provider/modèle, durée, tokens, état de complétion (✅ 🔧 ⛔ ❌)
 - **Statistiques cumulées** : les totaux « depuis toujours » survivent à la purge
