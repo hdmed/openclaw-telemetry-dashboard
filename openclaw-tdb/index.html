@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenClaw · TDB Télémétrie</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0f17; --card:rgba(255,255,255,.05); --border:rgba(255,255,255,.10);
+    --txt:#e7ecf3; --muted:#8b98ad; --accent:#ff7a45; --cyan:#38bdf8; --teal:#2dd4bf; --violet:#a78bfa;
+    --ok:#34d399; --warn:#fbbf24; --bad:#f87171; --mono:ui-monospace,'Cascadia Mono',Consolas,monospace;
+    --shadow:0 4px 24px rgba(0,0,0,.35); --t:.18s ease;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.24);border:2px solid transparent;background-clip:padding-box}
+  body{background:radial-gradient(1200px 600px at 80% -10%,rgba(56,189,248,.08),transparent),radial-gradient(900px 500px at 0% 110%,rgba(255,122,69,.07),transparent),var(--bg);color:var(--txt);font:400 15px/1.55 'Segoe UI',system-ui,sans-serif;padding:20px 24px 28px;min-height:100vh}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .logo{font-size:26px}
+  h1{font-size:20px;font-weight:600;letter-spacing:.3px}
+  h1 small{color:var(--muted);font-weight:400;font-size:12px;margin-left:10px;letter-spacing:.2px}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .badge{font-size:12px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--card);color:var(--muted);display:flex;align-items:center;gap:7px;white-space:nowrap;transition:border-color var(--t),color var(--t)}
+  .badge .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok)}
+  .badge.warn .dot{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+  .badge.bad .dot{background:var(--bad);box-shadow:0 0 6px var(--bad)}
+  .grid{display:grid;gap:14px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;backdrop-filter:blur(8px);box-shadow:var(--shadow);transition:transform var(--t),border-color var(--t),box-shadow var(--t)}
+  .card:hover{transform:translateY(-2px);border-color:rgba(255,122,69,.35)}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .kpi .lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:rgba(231,236,243,.75)}
+  .kpi .val{font-family:var(--mono);font-size:24px;font-weight:600;margin-top:7px;font-variant-numeric:tabular-nums}
+  .kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
+  .kpi .val.accent{color:var(--accent)} .kpi .val.cyan{color:var(--cyan)} .kpi .val.teal{color:var(--teal)} .kpi .val.violet{color:var(--violet)}
+  .sec-title{display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap}
+  .sec-title h2{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px}
+  .chips{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+  .chip{font-size:12px;padding:5px 13px;border-radius:16px;border:1px solid var(--border);background:var(--card);color:var(--muted);cursor:pointer;transition:all var(--t);font-family:inherit}
+  .chip:hover{border-color:var(--cyan);color:var(--txt)}
+  .chip.on{background:linear-gradient(135deg,rgba(56,189,248,.24),rgba(56,189,248,.10));border-color:var(--cyan);color:var(--cyan);font-weight:600;box-shadow:0 2px 12px rgba(56,189,248,.22)}
+  .card h3{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:12px}
+  .hero{position:relative;overflow:hidden;padding-top:18px}
+  .hero::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--cyan))}
+  .hero h3{display:flex;align-items:center;gap:9px}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);flex:none;animation:pulse 2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 8px var(--ok)}50%{opacity:.4;box-shadow:0 0 2px var(--ok)}}
+  .live-tag{margin-left:auto;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--ok);border:1px solid rgba(52,211,153,.3);background:rgba(52,211,153,.08);padding:3px 10px;border-radius:12px}
+  .canvas-wrap{position:relative;height:170px}
+  .row2{grid-template-columns:1.6fr 1fr}
+  .rowc{grid-template-columns:2.2fr 1fr}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--muted);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding:7px 8px;border-bottom:1px solid var(--border)}
+  td{padding:8px;border-bottom:1px solid rgba(255,255,255,.05)}
+  tbody tr{transition:background var(--t)}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  .pill{font-size:12px;padding:3px 10px;border-radius:12px;background:rgba(52,211,153,.12);color:var(--ok);border:1px solid rgba(52,211,153,.25);white-space:nowrap;transition:background var(--t),border-color var(--t)}
+  .pill.idle{background:rgba(139,152,173,.12);color:var(--muted);border-color:rgba(139,152,173,.25)}
+  .pill.tool{background:rgba(56,189,248,.12);color:var(--cyan);border-color:rgba(56,189,248,.25)}
+  .pill.err{background:rgba(248,113,113,.12);color:var(--bad);border-color:rgba(248,113,113,.25)}
+  .journal .pill{display:inline-flex;align-items:center;gap:6px}
+  .journal .pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+  .mini{display:flex;flex-direction:column;gap:12px}
+  .mini .card{display:flex;justify-content:space-between;align-items:center;padding:12px 16px}
+  .mini .k{font-size:13px;color:var(--muted)} .mini .v{font-family:var(--mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+  .journal td{font-size:12px}
+  .journal .task{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
+  .journal .act{font-family:var(--mono);font-size:11px;color:var(--cyan);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .journal .mdl{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .journal .ag{font-size:12px;font-weight:600;color:var(--violet)}
+  .journal tbody tr:hover{background:rgba(255,255,255,.03)}
+  .pinfo{font-size:12px;color:var(--muted);font-family:var(--mono);margin:0 6px}
+  .pager{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}
+  .pager button{background:var(--card);border:1px solid var(--border);color:var(--txt);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;transition:all var(--t)}
+  .pager button:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
+  .pager button:disabled{opacity:.3;cursor:default}
+  footer{margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+  button.sync{background:linear-gradient(135deg,var(--accent),#ff9a6b);border:none;color:#1a0e06;font-weight:700;font-size:13px;padding:10px 18px;border-radius:12px;cursor:pointer;transition:transform var(--t),box-shadow var(--t),opacity var(--t);box-shadow:0 2px 14px rgba(255,122,69,.35)}
+  button.sync:hover{transform:translateY(-1px);box-shadow:0 4px 18px rgba(255,122,69,.5)}
+  button.sync.busy{opacity:.6;pointer-events:none}
+  .toast{position:fixed;bottom:22px;right:22px;background:#141c2b;border:1px solid var(--border);border-left:3px solid var(--teal);padding:12px 16px;border-radius:12px;font-size:13px;color:var(--txt);opacity:0;transform:translateY(8px);transition:all .25s;max-width:340px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:9}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .empty{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:15px;background:rgba(11,15,23,.72);backdrop-filter:blur(4px);z-index:50}
+  .chart-fallback{display:none;height:170px;align-items:center;justify-content:center;color:var(--warn);font-size:13px;text-align:center;padding:0 20px}
+  body.no-chart .canvas-wrap{display:none} body.no-chart .chart-fallback{display:flex}
+  .jempty{padding:28px;text-align:center;color:var(--muted);font-size:13px}
+  @media(max-width:1100px){.row2,.rowc{grid-template-columns:1fr}}
+  @media(max-width:700px){body{padding:12px}.kpis{grid-template-columns:repeat(2,1fr)}.journal .task{max-width:170px}}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">🦞</span>
+  <h1>OpenClaw · Tableau de bord de télémétrie<small>agents · tokens · coût · activité</small></h1>
+  <div class="badges">
+    <button class="sync" id="btnSync" onclick="TDB.requestCollect()" style="margin-left:0;margin-right:4px">⟳ Synchroniser</button>
+    <span class="badge">⚙️ Gateway 2026.6.8</span>
+    <span class="badge" id="bRefresh">⏱ rafraîchissement : -</span>
+    <span class="badge" id="bFresh"><span class="dot"></span><span id="bFreshTxt">initialisation...</span></span>
+    <span class="badge" id="bLast">🕐 dernière collecte : -</span>
+  </div>
+</header>
+
+<section class="card full" id="helpCard" style="margin-bottom:14px">
+  <div class="sec-title" style="margin:0">
+    <h3 style="margin:0">📖 Aide - rafraîchissement &amp; données</h3>
+    <button class="chip" id="helpToggle" style="margin-left:auto">masquer</button>
+  </div>
+  <div id="helpBody" style="display:grid;gap:6px;font-size:13px;color:var(--muted);margin-top:10px">
+    <div>▶ <b style="color:var(--txt)">Collecter</b> : double-cliquez <span style="font-family:var(--mono)">collect.bat</span> (collecte + ouverture du TDB). La page relit les données toutes les 60 s tant qu'elle est ouverte.</div>
+    <div>🔁 <b style="color:var(--txt)">Rafraîchissement</b> - 3 modes au choix (modifiable à chaud via <span style="font-family:var(--mono)">scripts\configure.ps1</span>) : <b>manuel</b> (0 token, défaut) · <b>Task Scheduler</b> (0 token, automatique) · <b>cron OpenClaw</b> (flexible). Le badge en haut affiche le mode actif.</div>
+    <div>🧮 <b>Statistiques cumulées</b> : en filtre « tout », les cartes affichent les totaux depuis la première utilisation (<span style="font-family:var(--mono)">stats-aggregates.json</span>) - ils survivent à la purge (journal 7 j / 400 actions, history 30 j).</div>
+    <div>🔒 <b>Vie privée</b> : <span style="font-family:var(--mono)">telemetry/</span> reste local et hors dépôt (gitignore). Les données de démonstration sont dans <span style="font-family:var(--mono)">sample-data/</span>.</div>
+    <div>📚 <b>Docs complètes</b> : <span style="font-family:var(--mono)">README.md</span> · <span style="font-family:var(--mono)">docs/INSTALL.md</span> · <span style="font-family:var(--mono)">docs/USAGE.md</span> · <span style="font-family:var(--mono)">docs/ARCHITECTURE.md</span></div>
+  </div>
+</section>
+
+<section class="sec-title" style="margin-top:0">
+  <h2>Totaux de la période</h2>
+  <div class="chips" id="periodChips">
+    <button class="chip" data-p="1h">1 h</button>
+    <button class="chip" data-p="6h">6 h</button>
+    <button class="chip" data-p="24h">24 h</button>
+    <button class="chip" data-p="7j">7 j</button>
+    <button class="chip on" data-p="tout">Tout</button>
+  </div>
+  <span class="pinfo" id="perNote"></span>
+</section>
+<section class="grid kpis">
+  <div class="card kpi"><div class="lbl">⚡ Événements</div><div class="val" id="tEvt">-</div><div class="sub">messages traités</div></div>
+  <div class="card kpi"><div class="lbl">🔑 Requêtes</div><div class="val cyan" id="tReq">-</div><div class="sub">appels aux modèles</div></div>
+  <div class="card kpi"><div class="lbl">🧮 Tokens</div><div class="val teal" id="tTok">-</div><div class="sub">total période</div></div>
+  <div class="card kpi"><div class="lbl">🧠 Modèles</div><div class="val violet" id="tMdl">-</div><div class="sub">distincts utilisés</div></div>
+  <div class="card kpi"><div class="lbl">🕐 Heures enregistrées</div><div class="val accent" id="tHours">—</div><div class="sub">historique horaire immortel</div></div>
+</section>
+
+<div style="height:14px"></div>
+
+<section class="grid kpis">
+  <div class="card kpi"><div class="lbl">Tokens cumulés</div><div class="val cyan" id="kTok">-</div><div class="sub" id="kTokSub">session principale</div></div>
+  <div class="card kpi"><div class="lbl">Coût cumulé</div><div class="val teal" id="kCost">-</div><div class="sub">n/d si modèle gratuit / interne</div></div>
+  <div class="card kpi"><div class="lbl">Cache hit</div><div class="val" id="kCache">-</div><div class="sub" id="kCacheSub">tokens cachés</div></div>
+  <div class="card kpi"><div class="lbl">Contexte utilisé</div><div class="val accent" id="kCtx">-</div><div class="sub" id="kCtxSub">fenêtre modèle</div></div>
+  <div class="card kpi"><div class="lbl">Sessions actives</div><div class="val" id="kSess">-</div><div class="sub" id="kSessSub"></div></div>
+  <div class="card kpi"><div class="lbl">Uptime gateway</div><div class="val" id="kUp">-</div><div class="sub">processus local</div></div>
+</section>
+
+<div style="height:14px"></div>
+
+<section class="card full hero"><h3><span class="live-dot" aria-hidden="true"></span>Événements, requêtes &amp; tokens par heure<span class="live-tag">temps réel</span></h3><div class="canvas-wrap" style="height:250px"><canvas id="cHourly"></canvas></div><div class="chart-fallback" style="height:250px">Graphique indisponible.</div></section>
+
+<div style="height:14px"></div>
+
+<section class="grid rowc">
+  <div class="card"><h3>Tokens dans le temps — cumul &amp; dernier tour</h3><div class="canvas-wrap"><canvas id="cTokens"></canvas></div><div class="chart-fallback">📊 Graphique indisponible (Chart.js CDN hors ligne) — les KPI et tableaux restent actifs.</div></div>
+  <div class="card"><h3>Répartition des tokens par modèle</h3><div class="canvas-wrap" style="height:200px"><canvas id="cModel"></canvas></div><div class="chart-fallback">Graphique indisponible.</div></div>
+</section>
+
+<div style="height:14px"></div>
+
+<section class="grid row2">
+  <div class="grid" style="gap:14px">
+    <div class="card full"><h3>Agents configurés</h3>
+      <table id="tAgents"><thead><tr><th>ID</th><th>Nom</th><th>Modèle</th><th style="text-align:right">Statut</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card full"><h3>Sessions</h3>
+      <table id="tSess"><thead><tr><th>Session</th><th>Canal</th><th>Modèle</th><th class="num">Tokens</th><th class="num">Coût</th><th style="text-align:right">Statut</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <div class="mini">
+    <div class="card"><span class="k">👥 Agents configurés</span><span class="v" id="mAgents">-</span></div>
+    <div class="card"><span class="k">⏰ Tâches planifiées</span><span class="v" id="mCrons">-</span></div>
+    <div class="card"><span class="k">🧩 Sous-agents actifs</span><span class="v" id="mSubs">-</span></div>
+    <div class="card"><span class="k">🧠 Modèle courant</span><span class="v" style="font-size:12px" id="mModel">-</span></div>
+    <div class="card"><span class="k">🧹 Compactions</span><span class="v" id="mComp">-</span></div>
+    <div class="card"><span class="k">📡 Canaux</span><span class="v" style="font-size:12px" id="mChan">-</span></div>
+  </div>
+</section>
+
+<div style="height:14px"></div>
+
+<section class="card full journal">
+  <div class="sec-title" style="margin:0 0 10px">
+    <h3 style="margin:0">📜 Journal des actions</h3>
+    <div class="pager" style="margin:0">
+      <button id="pgFirst" title="Première page">⏮</button>
+      <button id="pgPrev" title="Page précédente">◀</button>
+      <span class="pinfo" id="pgInfo">- / -</span>
+      <button id="pgNext" title="Page suivante">▶</button>
+      <button id="pgLast" title="Dernière page">⏭</button>
+    </div>
+  </div>
+  <div style="overflow-x:auto">
+  <table id="tJournal"><thead><tr>
+    <th class="num">#</th><th>Heure</th><th>Tâche (demande utilisateur)</th><th>Action</th><th>Agent</th><th>Provider / Modèle</th><th class="num">Durée</th><th class="num">Tokens</th><th style="text-align:right">État</th>
+  </tr></thead><tbody></tbody></table>
+  </div>
+  <div class="jempty" id="jEmpty" style="display:none">Aucune action enregistrée pour cette période.</div>
+  <div style="display:flex;margin-top:8px"><span class="pinfo" id="pgTotal" style="margin-left:auto"></span></div>
+</section>
+
+<footer>
+  <span>🦞 TDB v0.2.0 · données 100 % locales · <span style="font-family:var(--mono)">telemetry/</span> hors dépôt Git · docs : README + docs\</span>
+</footer>
+
+<div class="toast" id="toast"></div>
+<div class="empty" id="empty">⏳ En attente de la première collecte de télémétrie...</div>
+
+<script>
+const KEY='***', PAGE=50;
+let HIST=[], JOURNAL=[], HOURLY=[], period='tout', jp=1;
+let charts={tokens:null,model:null,hourly:null};
+const $=id=>document.getElementById(id);
+const fmt=n=>n==null?'-':new Intl.NumberFormat('fr-FR').format(n);
+const fmtK=n=>{if(n==null)return'-';if(n>=1048576)return(n/1048576).toFixed(1).replace('.',',')+' M';if(n>=10000)return Math.round(n/1000)+' k';return String(n)};
+const fmtCost=c=>c==null?'-':'$'+Number(c).toFixed(4);
+const fmtDur=ms=>{if(ms==null)return'-';if(ms<1000)return ms+' ms';if(ms<60000)return(ms/1000).toFixed(1).replace('.',',')+' s';const m=Math.floor(ms/60000),s=Math.round((ms%60000)/1000);return m+' m '+String(s).padStart(2,'0')};
+const hhmm=ts=>new Date(ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+const hhlabel=h=>{const d=new Date(h);return d.toLocaleTimeString('fr-FR',{hour:'2-digit'})+'h'};
+const shortModel=m=>!m?'-':String(m).split('/').pop().replace(':free','').replace('-550b-a55b','');
+const shortProv=p=>!p?'-':(String(p).startsWith('custom__')?'custom':String(p));
+const norm=d=>({ts:d.ts||new Date().toISOString(),model:d.model||'-',provider:d.provider||'-',runIn:d.runIn??null,runOut:d.runOut??null,totalTokens:d.totalTokens??null,costUsd:d.costUsd??null,cacheHitPct:d.cacheHitPct??null,cachedTokens:d.cachedTokens??null,contextTokens:d.contextTokens??null,contextLimit:d.contextLimit??null,compactions:d.compactions??null,uptimeGateway:d.uptimeGateway||'-',sessionsActive:d.sessionsActive??null,sessionsTotal:d.sessionsTotal??null,agentsTotal:d.agentsTotal??null,cronsTotal:d.cronsTotal??0,subagentsActive:d.subagentsActive??0,channels:d.channels||'-',sessions:d.sessions||[],agents:d.agents||[]});
+const PERIODS={'1h':36e5,'6h':216e5,'24h':864e5,'7j':6048e5,'tout':null};
+const cutoff=()=>PERIODS[period]?Date.now()-PERIODS[period]:null;
+const inPeriod=ts=>{const c=cutoff();return !c||new Date(ts).getTime()>=c};
+
+/* ---------- données distantes ---------- */
+function pullRemote(manual){
+  let done=0, news=false;
+  const fin=()=>{ if(++done===5 && manual && !news) toast('Pas de nouvelle collecte. Prochain cycle auto dans ≤ 5 min (ou demandez « sync TDB » dans le chat).'); };
+  const s1=document.createElement('script'); s1.src='telemetry/latest.js?ts='+Date.now();
+  s1.onload=()=>{const r=window.TDB_REMOTE,last=HIST[HIST.length-1];
+    if(r&&(!last||new Date(r.ts)>new Date(last.ts))){HIST.push(norm(r));if(HIST.length>720)HIST=HIST.slice(-720);try{localStorage.setItem(KEY,JSON.stringify(HIST))}catch(e){}render(r);news=true;if(manual)toast('✅ Nouvelle collecte chargée - '+hhmm(r.ts))}
+    fin()};
+  s1.onerror=()=>{if(manual)toast('Aucune télémétrie disque trouvée (telemetry/latest.js).');fin()};
+  document.body.appendChild(s1);
+  const s2=document.createElement('script'); s2.src='telemetry/journal.js?ts='+Date.now();
+  s2.onload=()=>{JOURNAL=window.TDB_JOURNAL||[];HOURLY=window.TDB_HOURLY||[];jp=1;refreshDynamic();news=true;fin()};
+  s2.onerror=()=>{fin()};
+  document.body.appendChild(s2);
+  const s3=document.createElement('script'); s3.src='telemetry/aggregates.js?ts='+Date.now();
+  s3.onload=()=>{refreshDynamic();renderMeta();fin()};
+  s3.onerror=()=>{fin()};
+  document.body.appendChild(s3);
+  const s4=document.createElement('script'); s4.src='telemetry/meta.js?ts='+Date.now();
+  s4.onload=()=>{renderMeta();fin()};
+  s4.onerror=()=>{fin()};
+  document.body.appendChild(s4);
+  const s5=document.createElement('script'); s5.src='telemetry/hourly-history.js?ts='+Date.now();
+  s5.onload=()=>{if(period==='tout')renderHourly();fin()};
+  s5.onerror=()=>{fin()};
+  document.body.appendChild(s5);
+}
+
+/* ---------- rendu statique (dernier snapshot) ---------- */
+function render(d){
+  $('empty').style.display='none';
+  $('kTok').textContent=fmtK(d.totalTokens); $('kTokSub').textContent='+'+fmt(d.runOut)+' tokens au dernier tour';
+  $('kCost').textContent=fmtCost(d.costUsd);
+  $('kCache').textContent=d.cacheHitPct==null?'-':d.cacheHitPct+' %'; $('kCacheSub').textContent=fmtK(d.cachedTokens)+' tokens cachés';
+  const pct=(d.contextTokens&&d.contextLimit)?Math.round(d.contextTokens/d.contextLimit*100):null;
+  $('kCtx').textContent=pct==null?'-':pct+' %'; $('kCtxSub').textContent=fmtK(d.contextTokens)+' / '+fmtK(d.contextLimit);
+  $('kSess').textContent=d.sessionsActive??'-'; $('kSessSub').textContent=d.sessionsTotal+' session(s) au total';
+  $('kUp').textContent=d.uptimeGateway;
+  $('mAgents').textContent=d.agentsTotal??'-'; $('mCrons').textContent=d.cronsTotal??0;
+  $('mSubs').textContent=d.subagentsActive??0; $('mModel').textContent=d.model;
+  $('mComp').textContent=d.compactions??'-'; $('mChan').textContent=d.channels;
+  $('tAgents').tBodies[0].innerHTML=(d.agents.length?d.agents:[{id:'main',name:'main',model:d.model,active:1}]).map(a=>'<tr><td style="font-family:var(--mono)">'+a.id+'</td><td>'+a.name+'</td><td style="font-family:var(--mono);font-size:11.5px">'+a.model+'</td><td style="text-align:right"><span class="pill'+(a.active?'':' idle')+'">'+(a.active?'● actif':'prêt')+'</span></td></tr>').join('');
+  $('tSess').tBodies[0].innerHTML=(d.sessions.length?d.sessions:[{key:'-',channel:'-',model:d.model,tokens:d.totalTokens,cost:d.costUsd,status:'running'}]).map(s=>'<tr><td style="font-family:var(--mono);font-size:11.5px">'+s.key+'</td><td>'+s.channel+'</td><td style="font-family:var(--mono);font-size:11px">'+s.model+'</td><td class="num">'+fmtK(s.tokens)+'</td><td class="num">'+fmtCost(s.cost)+'</td><td style="text-align:right"><span class="pill">'+(s.status||'running')+'</span></td></tr>').join('');
+  $('bLast').textContent='🕐 dernière collecte : '+hhmm(d.ts)+' ('+ageTxt(d.ts)+')';
+  if(window.Chart) drawBase(d);
+}
+
+/* ---------- dynamique (journal + périodes) ---------- */
+function refreshDynamic(){ renderTotals(); renderByModel(); renderHourly(); jp=Math.max(1,Math.min(jp,Math.max(1,Math.ceil(rows().length/PAGE)))); renderJournal(); }
+
+function rows(){ return JOURNAL.filter(r=>inPeriod(r.ts)); }
+
+function renderTotals(){
+  const rs=rows();
+  let evt=0,tok=0;
+  HOURLY.filter(b=>inPeriod(b.h+':00')).forEach(b=>{evt+=b.events;tok+=b.tokens});
+  if(!HOURLY.length&&rs.length){rs.forEach(r=>{tok+=(r.tokens||0)})} /* secours si buckets absents */
+  const models=new Set(rs.map(r=>r.model).filter(Boolean));
+  const A=window.TDB_AGGR;
+  if(period==='tout'&&A&&A.requestsTotal>0){
+    /* mode « tout » : statistiques cumulees (survivent a la purge) */
+    $('tEvt').textContent=fmt(A.eventsTotal); $('tReq').textContent=fmt(A.requestsTotal);
+    $('tTok').textContent=fmtK(A.tokensTotal);
+    const nm=A.byModel?Object.keys(A.byModel).length:0;
+    $('tMdl').textContent=nm||models.size||'0';
+    $('perNote').textContent='cumulés depuis le '+(A.firstTs?new Date(A.firstTs).toLocaleDateString('fr-FR'):'-');
+  } else {
+    $('tEvt').textContent=fmt(evt); $('tReq').textContent=fmt(rs.length);
+    $('tTok').textContent=fmtK(tok); $('tMdl').textContent=models.size||'0';
+    $('perNote').textContent='';
+  }
+  $('tHours').textContent=fmt((window.TDB_AGGR&&window.TDB_AGGR.hourlyHistoryCount!=null)?window.TDB_AGGR.hourlyHistoryCount:0);
+}
+
+function renderByModel(){
+  if(!window.Chart)return;
+  const agg={}; rows().forEach(r=>{const m=shortModel(r.model);if(m==='-')return;agg[m]=(agg[m]||0)+(r.tokens||0)});
+  const labels=Object.keys(agg), data=Object.values(agg);
+  const pal=['#38bdf8','#ff7a45','#a78bfa','#2dd4bf','#fbbf24','#f87171','#34d399'];
+  const cd={labels,datasets:[{data,backgroundColor:labels.map((_,i)=>pal[i%pal.length]),borderWidth:0,cutout:'62%'}]};
+  if(charts.model){charts.model.data=cd;charts.model.update()}
+  else charts.model=new Chart($('cModel'),{type:'doughnut',data:cd,options:{responsive:true,maintainAspectRatio:false,animation:{duration:350},plugins:{legend:{position:'right',labels:{boxWidth:9,font:{size:10.5}}}}}});
+}
+
+function renderHourly(){
+  if(!window.Chart)return;
+  /* Source : fenêtre 7 j (HOURLY) ; en mode « tout », historique horaire immortel */
+  let bs=[];
+  if(period==='tout'&&window.TDB_HIST&&window.TDB_HIST.length){
+    bs=window.TDB_HIST.slice(-365*24).map(h=>({h:h.h+':00',events:h.events,requests:h.requests,tokens:h.tokens}));
+  } else {
+    bs=HOURLY.filter(b=>inPeriod(b.h+':00')).slice(-72);
+  }
+  /* échantillonnage pour fluidité au-delà de 2000 points */
+  if(bs.length>2000){
+    const step=Math.ceil(bs.length/2000);
+    bs=bs.filter((_,i)=>i%step===0||i===bs.length-1);
+  }
+  const labels=bs.map(b=>hhlabel(b.h));
+  const cd={labels,datasets:[
+    {type:'bar',label:'Événements',data:bs.map(b=>b.events),backgroundColor:'rgba(56,189,248,.55)',borderRadius:4,yAxisID:'y',barPercentage:.6},
+    {type:'bar',label:'Requêtes',data:bs.map(b=>b.requests),backgroundColor:'rgba(255,122,69,.6)',borderRadius:4,yAxisID:'y',barPercentage:.6},
+    {type:'line',label:'Tokens',data:bs.map(b=>b.tokens),borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,.12)',yAxisID:'y1',tension:.35,pointRadius:2,borderWidth:2,fill:true}]};
+  const opt={responsive:true,maintainAspectRatio:false,animation:{duration:350},interaction:{mode:'index',intersect:false},
+    plugins:{legend:{labels:{boxWidth:10,font:{size:10.5}}}},
+    scales:{y:{position:'left',title:{display:true,text:'messages',font:{size:9}}},y1:{position:'right',grid:{display:false},title:{display:true,text:'tokens',font:{size:9}}}}};
+  if(charts.hourly){charts.hourly.data=cd;charts.hourly.options=opt;charts.hourly.update()}
+  else charts.hourly=new Chart($('cHourly'),{data:cd,type:'bar',options:opt});
+}
+
+function renderMeta(){
+  const M=window.TDB_META||{};
+  const map={manual:'manuel',taskScheduler:'Task Scheduler',openclawCron:'cron OpenClaw'};
+  const lbl=map[M.refreshMode]||M.refreshMode||'manuel';
+  $('bRefresh').textContent='⏱ rafraîchissement : '+lbl+((M.refreshMode&&M.refreshMode!=='manual'&&M.intervalMinutes)?' · '+M.intervalMinutes+' min':'');
+}
+function renderJournal(){
+  const rs=rows().slice().reverse(); /* plus récent d'abord */
+  const pages=Math.max(1,Math.ceil(rs.length/PAGE));
+  jp=Math.min(Math.max(1,jp),pages);
+  const start=(jp-1)*PAGE, slice=rs.slice(start,start+PAGE);
+  $('pgInfo').textContent='Page '+jp+' / '+pages;
+  $('pgTotal').textContent=rs.length+' action(s) au total · par lot de '+PAGE;
+  $('pgFirst').disabled=jp===1; $('pgPrev').disabled=jp===1; $('pgNext').disabled=jp>=pages; $('pgLast').disabled=jp>=pages;
+  $('jEmpty').style.display=slice.length?'none':'block';
+  $('tJournal').tBodies[0].innerHTML=slice.map((r,i)=>{
+    const st=r.state||'-';
+    const cls=st.indexOf('✅')===0?'':(st.indexOf('🔧')===0?' tool':(st.indexOf('⛔')===0||st.indexOf('❌')===0?' err':' idle'));
+    return '<tr>'+
+      '<td class="num" style="color:var(--muted)">'+(start+i+1)+'</td>'+
+      '<td style="font-family:var(--mono);font-size:11px;white-space:nowrap">'+new Date(r.ts).toLocaleTimeString('fr-FR')+'</td>'+
+      '<td class="task" title="'+esc(r.task||'')+'">'+esc(r.task||'-')+'</td>'+
+      '<td class="act" title="'+esc(r.action||'')+'">'+esc(r.action||'-')+'</td>'+
+      '<td><span class="ag">'+esc(r.agent||'-')+'</span></td>'+
+      '<td class="mdl">'+esc(shortProv(r.provider))+' · '+esc(shortModel(r.model))+'</td>'+
+      '<td class="num">'+fmtDur(r.durationMs)+'</td>'+
+      '<td class="num">'+fmtK(r.tokens)+'</td>'+
+      '<td style="text-align:right"><span class="pill'+cls+'">'+st+'</span></td>'+
+    '</tr>';
+  }).join('');
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+/* ---------- graphiques de base ---------- */
+function drawBase(d){
+  const L=HIST.slice(-60), labels=L.map(p=>hhmm(p.ts));
+  Chart.defaults.color='#8b98ad'; Chart.defaults.borderColor='rgba(255,255,255,.06)';
+  const common={responsive:true,maintainAspectRatio:false,animation:{duration:350},plugins:{legend:{labels:{boxWidth:10,font:{size:10.5}}}}};
+  const t=charts.tokens&&charts.tokens.data;
+  if(t){t.labels=labels;t.datasets[0].data=L.map(p=>p.totalTokens);t.datasets[1].data=L.map(p=>p.runOut);charts.tokens.update()}
+  else{charts.tokens=new Chart($('cTokens'),{type:'bar',data:{labels,datasets:[
+      {type:'line',label:'Cumul session',data:L.map(p=>p.totalTokens),borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.12)',yAxisID:'y',tension:.35,pointRadius:2.5,borderWidth:2,fill:true},
+      {type:'bar',label:'Sortie / tour',data:L.map(p=>p.runOut),backgroundColor:'rgba(255,122,69,.55)',borderRadius:4,yAxisID:'y1',barPercentage:.55}]},
+    options:{...common,scales:{y:{position:'left',title:{display:true,text:'cumul',font:{size:9}}},y1:{position:'right',grid:{display:false},title:{display:true,text:'tour',font:{size:9}}}}}})}
+}
+
+/* ---------- divers ---------- */
+function ageTxt(ts){if(!ts)return'-';const m=Math.round((Date.now()-new Date(ts).getTime())/60000);if(m<1)return"à l'instant";if(m===1)return'il y a 1 min';return'il y a '+m+' min'}
+function freshness(){
+  if(!HIST.length)return;
+  const m=(Date.now()-new Date(HIST[HIST.length-1].ts).getTime())/60000, b=$('bFresh');
+  b.className='badge'+(m>30?' bad':m>12?' warn':'');
+  $('bFreshTxt').textContent=m>30?'⚠️ collecte bloquée':m>12?'données anciennes':'temps réel';
+}
+let toastT; function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),4200)}
+
+window.TDB={
+  applyData(raw){const d=norm(raw);HIST.push(d);if(HIST.length>720)HIST=HIST.slice(-720);try{localStorage.setItem(KEY,JSON.stringify(HIST))}catch(e){}render(d);freshness()},
+  syncBtn(){
+    const b=$('btnSync'); b.classList.add('busy'); b.textContent='⟳ ...';
+    setTimeout(()=>{b.classList.remove('busy');b.textContent='⟳ Synchroniser';pullRemote(true)},450);
+  },
+  /** Bascule le bouton en mode 'collecte en cours...' et écoute
+   *  l'arrivée d'un nouveau snapshot (max 60 s).
+   *  À coupler avec une demande 'sync TDB' dans le chat. */
+  requestCollect(){
+    const b=$('btnSync'); b.classList.add('busy'); b.textContent='⏳ collecte...';
+    toast('Demande envoyée : dites « sync TDB » dans le chat pour déclencher la collecte. Le bouton passera au vert dès le nouveau snapshot reçu.');
+    const t0=Date.now(), lastTs=HIST.length?HIST[HIST.length-1].ts:null;
+    const tick=()=>{
+      const last=HIST[HIST.length-1];
+      if(last&&(!lastTs||new Date(last.ts)>new Date(lastTs))){
+        b.classList.remove('busy'); b.textContent='✓ à jour'; b.style.background='linear-gradient(135deg,#34d399,#2dd4bf)';
+        toast('✅ Nouvelle collecte appliquée ('+hhmm(last.ts)+').');
+        setTimeout(()=>{b.textContent='⟳ Synchroniser';b.style.background='';},3500);
+        return;
+      }
+      if(Date.now()-t0>60000){
+        b.classList.remove('busy'); b.textContent='⟳ Synchroniser';
+        toast('Aucune nouvelle collecte reçue en 60 s. Ré-essayez ou attendez le prochain cycle auto (≤ 5 min).');
+        return;
+      }
+      pullRemote(false);
+      setTimeout(tick,2000);
+    };
+    setTimeout(tick,2000);
+  }
+};
+
+/* filtre de période */
+$('helpToggle').onclick=()=>{
+  const b=$('helpBody'), hide=b.style.display!=='none';
+  b.style.display=hide?'none':'grid';
+  $('helpToggle').textContent=hide?'afficher':'masquer';
+  try{localStorage.setItem('tdb_help_hidden',hide?'1':'0')}catch(e){}
+};
+try{ if(localStorage.getItem('tdb_help_hidden')==='1'){ const b=$('helpBody'); b.style.display='none'; $('helpToggle').textContent='afficher'; } }catch(e){}
+$('periodChips').addEventListener('click',e=>{
+  const b=e.target.closest('.chip'); if(!b)return;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+  b.classList.add('on'); period=b.dataset.p; jp=1; refreshDynamic(); renderHourly();
+});
+/* pagination */
+$('pgFirst').onclick=()=>{jp=1;renderJournal()};
+$('pgPrev').onclick=()=>{jp=Math.max(1,jp-1);renderJournal()};
+$('pgNext').onclick=()=>{jp++;renderJournal()};
+$('pgLast').onclick=()=>{jp=Math.max(1,Math.ceil(rows().length/PAGE));renderJournal()};
+
+if(!window.Chart){document.body.classList.add('no-chart')}
+try{HIST=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){HIST=[]}
+if(HIST.length){render(HIST[HIST.length-1]);freshness()}
+pullRemote(false);
+setInterval(freshness,30000);
+setInterval(()=>pullRemote(false),60000);
+</script>
+</body>
+</html>

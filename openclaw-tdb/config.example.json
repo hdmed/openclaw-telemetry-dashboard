@@ -1,0 +1,10 @@
+{
+  "refreshMode": "manual",
+  "intervalMinutes": 5,
+  "cliPath": null,
+  "cfgPath": null,
+  "agentsRoot": null,
+  "historyMaxDays": 30,
+  "journalMax": 400,
+  "journalDays": 7
+}

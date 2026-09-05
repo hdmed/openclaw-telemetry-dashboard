@@ -1,0 +1,12 @@
+# Données d'exécution locales (jamais committées)
+openclaw-tdb/telemetry/
+config.local.json
+
+# Système / éditeurs
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*.log
+*.tmp
+node_modules/
