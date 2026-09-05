@@ -94,9 +94,12 @@
 <body>
 <header>
   <span class="logo">🦞</span>
-  <h1>OpenClaw · Tableau de bord de télémétrie<small>agents · tokens · coût · activité</small></h1>
+  <h1 data-i18n-html="header.title"><small data-i18n-html="header.subtitle"></small></h1>
   <div class="badges">
-    <button class="sync" id="btnSync" onclick="TDB.requestCollect()" style="margin-left:0;margin-right:4px">⟳ Synchroniser</button>
+    <select id="langSel" title="Language" style="background:var(--card);border:1px solid var(--border);color:var(--txt);font:12px ui-monospace,monospace;padding:4px 8px;border-radius:14px;cursor:pointer;outline:none">
+  <option value="fr">FR</option><option value="en">EN</option><option value="es">ES</option><option value="zh">ZH</option>
+</select>
+  <button class="sync" id="btnSync" onclick="TDB.requestCollect()" data-i18n="btn.sync" style="margin-left:0;margin-right:4px">⟳ Synchroniser</button>
     <span class="badge">⚙️ Gateway 2026.6.8</span>
     <span class="badge" id="bRefresh">⏱ rafraîchissement : -</span>
     <span class="badge" id="bFresh"><span class="dot"></span><span id="bFreshTxt">initialisation...</span></span>
@@ -106,8 +109,8 @@
 
 <section class="card full" id="helpCard" style="margin-bottom:14px">
   <div class="sec-title" style="margin:0">
-    <h3 style="margin:0">📖 Aide - rafraîchissement &amp; données</h3>
-    <button class="chip" id="helpToggle" style="margin-left:auto">masquer</button>
+    <h3 style="margin:0"><span data-i18n-html="help.title">📖 Aide — rafraîchissement &amp; données</span></h3>
+    <button class="chip" id="helpToggle" style="margin-left:auto" data-i18n="help.toggle.hide">masquer</button>
   </div>
   <div id="helpBody" style="display:grid;gap:6px;font-size:13px;color:var(--muted);margin-top:10px">
     <div>▶ <b style="color:var(--txt)">Collecter</b> : double-cliquez <span style="font-family:var(--mono)">collect.bat</span> (collecte + ouverture du TDB). La page relit les données toutes les 60 s tant qu'elle est ouverte.</div>
@@ -119,22 +122,22 @@
 </section>
 
 <section class="sec-title" style="margin-top:0">
-  <h2>Totaux de la période</h2>
+  <h2 data-i18n="period.title">Totaux de la période</h2>
   <div class="chips" id="periodChips">
-    <button class="chip" data-p="1h">1 h</button>
-    <button class="chip" data-p="6h">6 h</button>
-    <button class="chip" data-p="24h">24 h</button>
-    <button class="chip" data-p="7j">7 j</button>
-    <button class="chip on" data-p="tout">Tout</button>
+    <button class="chip" data-p="1h" data-i18n="period.chip.1h">1 h</button>
+    <button class="chip" data-p="6h" data-i18n="period.chip.6h">6 h</button>
+    <button class="chip" data-p="24h" data-i18n="period.chip.24h">24 h</button>
+    <button class="chip" data-p="7j" data-i18n="period.chip.7j">7 j</button>
+    <button class="chip on" data-p="tout" data-i18n="period.chip.tout">Tout</button>
   </div>
   <span class="pinfo" id="perNote"></span>
 </section>
 <section class="grid kpis">
-  <div class="card kpi"><div class="lbl">⚡ Événements</div><div class="val" id="tEvt">-</div><div class="sub">messages traités</div></div>
-  <div class="card kpi"><div class="lbl">🔑 Requêtes</div><div class="val cyan" id="tReq">-</div><div class="sub">appels aux modèles</div></div>
-  <div class="card kpi"><div class="lbl">🧮 Tokens</div><div class="val teal" id="tTok">-</div><div class="sub">total période</div></div>
-  <div class="card kpi"><div class="lbl">🧠 Modèles</div><div class="val violet" id="tMdl">-</div><div class="sub">distincts utilisés</div></div>
-  <div class="card kpi"><div class="lbl">🕐 Heures enregistrées</div><div class="val accent" id="tHours">—</div><div class="sub">historique horaire immortel</div></div>
+  <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.events">⚡ Événements</div><div class="val" id="tEvt">-</div><div class="sub" data-i18n="kpi.totals.events.sub">messages traités</div></div>
+  <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.requests">🔑 Requêtes</div><div class="val cyan" id="tReq">-</div><div class="sub" data-i18n="kpi.totals.requests.sub">appels aux modèles</div></div>
+  <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.tokens">🧮 Tokens</div><div class="val teal" id="tTok">-</div><div class="sub" data-i18n="kpi.totals.tokens.sub">total période</div></div>
+  <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.models">🧠 Modèles</div><div class="val violet" id="tMdl">-</div><div class="sub" data-i18n="kpi.totals.models.sub">distincts utilisés</div></div>
+  <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.hours">🕐 Heures enregistrées</div><div class="val accent" id="tHours">—</div><div class="sub" data-i18n="kpi.totals.hours.sub">historique horaire immortel</div></div>
 </section>
 
 <div style="height:14px"></div>
@@ -150,24 +153,24 @@
 
 <div style="height:14px"></div>
 
-<section class="card full hero"><h3><span class="live-dot" aria-hidden="true"></span>Événements, requêtes &amp; tokens par heure<span class="live-tag">temps réel</span></h3><div class="canvas-wrap" style="height:250px"><canvas id="cHourly"></canvas></div><div class="chart-fallback" style="height:250px">Graphique indisponible.</div></section>
+<section class="card full hero"><h3><span class="live-dot" aria-hidden="true"></span><span data-i18n="chart.hourly">Événements, requêtes &amp; tokens par heure</span><span class="live-tag" data-i18n="hero.liveTag">temps réel</span></h3><div class="canvas-wrap" style="height:250px"><canvas id="cHourly"></canvas></div><div class="chart-fallback" style="height:250px">Graphique indisponible.</div></section>
 
 <div style="height:14px"></div>
 
 <section class="grid rowc">
-  <div class="card"><h3>Tokens dans le temps — cumul &amp; dernier tour</h3><div class="canvas-wrap"><canvas id="cTokens"></canvas></div><div class="chart-fallback">📊 Graphique indisponible (Chart.js CDN hors ligne) — les KPI et tableaux restent actifs.</div></div>
-  <div class="card"><h3>Répartition des tokens par modèle</h3><div class="canvas-wrap" style="height:200px"><canvas id="cModel"></canvas></div><div class="chart-fallback">Graphique indisponible.</div></div>
+  <div class="card"><h3 data-i18n-html="chart.tokensTime">Tokens dans le temps — cumul &amp; dernier tour</h3><div class="canvas-wrap"><canvas id="cTokens"></canvas></div><div class="chart-fallback">📊 Graphique indisponible (Chart.js CDN hors ligne) — les KPI et tableaux restent actifs.</div></div>
+  <div class="card"><h3 data-i18n-html="chart.model">Répartition des tokens par modèle</h3><div class="canvas-wrap" style="height:200px"><canvas id="cModel"></canvas></div><div class="chart-fallback">Graphique indisponible.</div></div>
 </section>
 
 <div style="height:14px"></div>
 
 <section class="grid row2">
   <div class="grid" style="gap:14px">
-    <div class="card full"><h3>Agents configurés</h3>
-      <table id="tAgents"><thead><tr><th>ID</th><th>Nom</th><th>Modèle</th><th style="text-align:right">Statut</th></tr></thead><tbody></tbody></table>
+    <div class="card full"><h3 data-i18n="table.agents">Agents configurés</h3>
+      <table id="tAgents"><thead><tr><th data-i18n="table.agents.id">ID</th><th data-i18n="table.agents.name">Nom</th><th data-i18n="table.agents.model">Modèle</th><th style="text-align:right" data-i18n="table.sessions.status">Statut</th></tr></thead><tbody></tbody></table>
     </div>
-    <div class="card full"><h3>Sessions</h3>
-      <table id="tSess"><thead><tr><th>Session</th><th>Canal</th><th>Modèle</th><th class="num">Tokens</th><th class="num">Coût</th><th style="text-align:right">Statut</th></tr></thead><tbody></tbody></table>
+    <div class="card full"><h3 data-i18n="table.sessions">Sessions</h3>
+      <table id="tSess"><thead><tr><th data-i18n="table.sessions.key">Session</th><th data-i18n="table.sessions.channel">Canal</th><th>Modèle</th><th class="num" data-i18n="table.sessions.tokens">Tokens</th><th class="num" data-i18n="table.sessions.cost">Coût</th><th style="text-align:right">Statut</th></tr></thead><tbody></tbody></table>
     </div>
   </div>
   <div class="mini">
@@ -184,7 +187,7 @@
 
 <section class="card full journal">
   <div class="sec-title" style="margin:0 0 10px">
-    <h3 style="margin:0">📜 Journal des actions</h3>
+    <h3 style="margin:0" data-i18n="journal.title">📜 Journal des actions</h3>
     <div class="pager" style="margin:0">
       <button id="pgFirst" title="Première page">⏮</button>
       <button id="pgPrev" title="Page précédente">◀</button>
@@ -195,7 +198,7 @@
   </div>
   <div style="overflow-x:auto">
   <table id="tJournal"><thead><tr>
-    <th class="num">#</th><th>Heure</th><th>Tâche (demande utilisateur)</th><th>Action</th><th>Agent</th><th>Provider / Modèle</th><th class="num">Durée</th><th class="num">Tokens</th><th style="text-align:right">État</th>
+    <th class="num">#</th><th data-i18n="journal.col.time">Heure</th><th data-i18n="journal.col.task">Tâche (demande utilisateur)</th><th data-i18n="journal.col.action">Action</th><th data-i18n="journal.col.agent">Agent</th><th data-i18n="journal.col.model">Provider / Modèle</th><th class="num" data-i18n="journal.col.duration">Durée</th><th class="num" data-i18n="journal.col.tokens">Tokens</th><th style="text-align:right" data-i18n="journal.col.state">État</th>
   </tr></thead><tbody></tbody></table>
   </div>
   <div class="jempty" id="jEmpty" style="display:none">Aucune action enregistrée pour cette période.</div>
@@ -208,6 +211,48 @@
 
 <div class="toast" id="toast"></div>
 <div class="empty" id="empty">⏳ En attente de la première collecte de télémétrie...</div>
+
+<script src="i18n/fr.js"></script>
+<script>
+// === i18n mini-moteur (injection a l'ouverture + re-render) =====================
+function t(key, vars){ const D=window.TDB_I18N||{meta:{lang:'fr'}}; let s=D[key]||key;
+  if(vars) for(const k in vars) s=s.split('{'+k+'}').join(vars[k]||'');
+  return s; }
+function tApply(root){
+  (root||document).querySelectorAll('[data-i18n]').forEach(el=>{
+    const k=el.getAttribute('data-i18n');
+    if(k.indexOf('html:')===0){ el.innerHTML=t(k.slice(5)); } else { el.textContent=t(k); }
+  });
+  (root||document).querySelectorAll('[data-i18n-attr]').forEach(el=>{
+    el.getAttribute('data-i18n-attr').split(';').forEach(p=>{
+      const [k,a]=p.split(':'); if(k&&a) el.setAttribute(a, t(k));
+    });
+  });
+  if(window.TDB_META){ /* refresh refreshMode badge text */ const m=document.getElementById('bRefresh'); if(m) m.textContent=t('header.refresh.unknown').replace('—','')+document.getElementById('bRefresh').textContent.replace(t('header.refresh.unknown').replace('—',''),''); }
+}
+function tSetLang(lang, reload){
+  const url='i18n/'+lang+'.js?ts='+Date.now();
+  const s=document.createElement('script'); s.src=url;
+  s.onload=()=>{ try{localStorage.setItem('tdb_lang',lang);}catch(e){} tApply(); if(reload&&window.TDB) window.location.reload(); else if(window.render) window.render(HIST[HIST.length-1]||{}); /* safe re-render */ };
+  document.body.appendChild(s);
+}
+(function(){
+  let lang='fr'; try{const v=localStorage.getItem('tdb_lang'); if(v) lang=v; else if(navigator.language){lang=(navigator.language||'fr').slice(0,2).toLowerCase(); if(['fr','en','es','zh'].indexOf(lang)<0) lang='fr';}}catch(e){}
+  const sel=document.getElementById('langSel'); if(sel) sel.value=lang;
+  // attend que le DOM soit pret
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',()=>tApply());} else { setTimeout(tApply,0); }
+})();
+</script>
+
+<script>
+(function(){
+  let lang='fr'; try{const v=localStorage.getItem('tdb_lang'); if(v) lang=v; else if(navigator.language){lang=(navigator.language||'fr').slice(0,2).toLowerCase(); if(['fr','en','es','zh'].indexOf(lang)<0) lang='fr';}}catch(e){}
+  const sel=document.getElementById('langSel'); if(sel){
+    sel.value=lang;
+    sel.addEventListener('change',e=>{ tSetLang(e.target.value, false); });
+  }
+})();
+</script>
 
 <script>
 const KEY='***', PAGE=50;

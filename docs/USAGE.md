@@ -1,5 +1,12 @@
 # Usage
 
+<div align="center">
+
+[![🇫🇷 Français](https://img.shields.io/badge/langue-Fran%C3%A7ais-ff7a45)](USAGE.md)
+[![🇬🇧 English](https://img.shields.io/badge/lang-English-38bdf8)](en/USAGE.md)
+
+</div>
+
 ## Les 3 modes de rafraîchissement
 
 Le TDB est **passeur de fichiers** : `collect.ps1` écrit `telemetry/`, la page

@@ -1,5 +1,12 @@
 # Architecture
 
+<div align="center">
+
+[![🇫🇷 Français](https://img.shields.io/badge/langue-Fran%C3%A7ais-ff7a45)](ARCHITECTURE.md)
+[![🇬🇧 English](https://img.shields.io/badge/lang-English-38bdf8)](en/ARCHITECTURE.md)
+
+</div>
+
 ## Vue d'ensemble
 
 ```text

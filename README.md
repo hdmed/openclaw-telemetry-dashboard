@@ -2,6 +2,13 @@
 
 # 🦞 TDB — Tableau de bord de télémétrie OpenClaw
 
+<div align="center">
+
+[![🇫🇷 Français](https://img.shields.io/badge/langue-Fran%C3%A7ais-ff7a45)](README.md)
+[![🇬🇧 English](https://img.shields.io/badge/lang-English-38bdf8)](README.en.md)
+
+</div>
+
 **Tableau de bord HTML auto-alimenté pour OpenClaw — tokens, coût, cache, agents, journal des actions**
 
 ![Licence](https://img.shields.io/badge/licence-MIT-2dd4bf)

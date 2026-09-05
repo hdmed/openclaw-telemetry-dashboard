@@ -1,5 +1,12 @@
 # Installation
 
+<div align="center">
+
+[![🇫🇷 Français](https://img.shields.io/badge/langue-Fran%C3%A7ais-ff7a45)](INSTALL.md)
+[![🇬🇧 English](https://img.shields.io/badge/lang-English-38bdf8)](en/INSTALL.md)
+
+</div>
+
 ## Prérequis
 
 | Composant | Obligatoire ? | Rôle |
