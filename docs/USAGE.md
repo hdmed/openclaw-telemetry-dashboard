@@ -93,3 +93,13 @@ globaux ne baissent jamais. Réglages : clés `journalMax`, `journalDays`,
 
 Mode `taskScheduler` : `scripts\unregister-task.ps1`, puis supprimer le
 dossier du projet. OpenClaw et ses données ne sont pas modifiés.
+
+## Comptabilité des tokens
+
+Le TDB distingue désormais :
+
+- **Tokens rapportés** : `usage.totalTokens` fourni par le provider ;
+- **Tokens inconnus** : requêtes dont le provider ne transmet pas d'usage (affichées comme `—`, jamais comme `0`) ;
+- **Tokens cumulés** : somme historique des tokens rapportés uniquement.
+
+Les providers peuvent ne pas exposer les métriques d'usage. Ces requêtes restent comptées dans les requêtes/événements, mais ne sont pas ajoutées au total de tokens. La carte « Tokens inconnus » permet de les identifier.

@@ -45,6 +45,8 @@ window.TDB_I18N = {
   "kpi.totals.tokens.sub": "时段合计",
   "kpi.totals.models": "🧠 模型",
   "kpi.totals.models.sub": "不同模型数",
+  "kpi.totals.unknown": "❔ 未知令牌",
+  "kpi.totals.unknown.sub": "未返回提供商用量的请求",
   "kpi.totals.hours": "🕐 记录小时数",
   "kpi.totals.hours.sub": "永久小时历史",
 

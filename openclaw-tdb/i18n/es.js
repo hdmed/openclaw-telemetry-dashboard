@@ -45,6 +45,8 @@ window.TDB_I18N = {
   "kpi.totals.tokens.sub": "total del período",
   "kpi.totals.models": "🧠 Modelos",
   "kpi.totals.models.sub": "distintos en uso",
+  "kpi.totals.unknown": "❔ Tokens desconocidos",
+  "kpi.totals.unknown.sub": "peticiones sin uso del proveedor",
   "kpi.totals.hours": "🕐 Horas registradas",
   "kpi.totals.hours.sub": "historial horario inmortal",
 

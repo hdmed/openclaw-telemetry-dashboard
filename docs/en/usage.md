@@ -94,3 +94,13 @@ decrease. Settings: keys `journalMax`, `journalDays`, `historyMaxDays` in
 
 `taskScheduler` mode: `scripts\unregister-task.ps1`, then delete the project
 folder. OpenClaw and its data are not modified.
+
+## Token accounting
+
+The TDB now distinguishes:
+
+- **Reported tokens**: `usage.totalTokens` returned by the provider;
+- **Unknown tokens**: requests for which the provider returns no usage (shown as `—`, never as `0`);
+- **Cumulative tokens**: historical sum of reported tokens only.
+
+Providers may not expose usage metrics. Those requests remain counted as requests/events, but are not added to the token total. The “Unknown tokens” card makes them visible.

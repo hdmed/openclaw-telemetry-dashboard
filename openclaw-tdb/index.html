@@ -138,6 +138,7 @@
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.tokens">🧮 Tokens</div><div class="val teal" id="tTok">-</div><div class="sub" data-i18n="kpi.totals.tokens.sub">total période</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.models">🧠 Modèles</div><div class="val violet" id="tMdl">-</div><div class="sub" data-i18n="kpi.totals.models.sub">distincts utilisés</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.hours">🕐 Heures enregistrées</div><div class="val accent" id="tHours">—</div><div class="sub" data-i18n="kpi.totals.hours.sub">historique horaire immortel</div></div>
+  <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.unknown">❔ Tokens inconnus</div><div class="val" id="tUnknown">—</div><div class="sub" data-i18n="kpi.totals.unknown.sub">requêtes sans usage provider</div></div>
 </section>
 
 <div style="height:14px"></div>
@@ -344,6 +345,7 @@ function renderTotals(){
     $('perNote').textContent='';
   }
   $('tHours').textContent=fmt((window.TDB_AGGR&&window.TDB_AGGR.hourlyHistoryCount!=null)?window.TDB_AGGR.hourlyHistoryCount:0);
+  $('tUnknown').textContent=fmt((A&&A.unknownRequestsTotal!=null)?A.unknownRequestsTotal:0);
 }
 
 function renderByModel(){

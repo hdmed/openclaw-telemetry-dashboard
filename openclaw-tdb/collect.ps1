@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 #  TDB Collector v3 (portable) - OpenClaw Telemetry Dashboard
 #  - Interroge la CLI OpenClaw (status --json) si disponible
 #  - Extrait le journal des actions depuis les transcripts
@@ -144,7 +144,7 @@ if (Test-Path $conf.agentsRoot) {
         $tsCur = [datetime]$o.timestamp
         $hKey = $tsCur.ToString("yyyy-MM-ddTHH:00")
         if (-not $hourly.ContainsKey($hKey)) {
-          $hourly[$hKey] = [pscustomobject]@{ h = $hKey; events = 0; requests = 0; tokens = 0 }
+          $hourly[$hKey] = [pscustomobject]@{ h = $hKey; events = 0; requests = 0; tokens = 0; reportedTokens = 0; unknownRequests = 0 }
         }
         $hourly[$hKey].events++
 
@@ -169,7 +169,8 @@ if (Test-Path $conf.agentsRoot) {
           $dur = $null
           if ($lastTs) { $dur = [int]($tsCur - $lastTs).TotalMilliseconds; if ($dur -lt 0) { $dur = $null } }
           $tok = $null
-          if ($u) { $tok = $u.totalTokens }
+          $tokenStatus = "unknown"
+          if ($u -and $null -ne $u.totalTokens -and [long]$u.totalTokens -gt 0) { $tok = [long]$u.totalTokens; $tokenStatus = "reported" }
           $journal.Add([pscustomobject]@{
             ts         = $tsCur.ToString("yyyy-MM-ddTHH:mm:sszzz")
             agent      = $agentId
@@ -180,6 +181,7 @@ if (Test-Path $conf.agentsRoot) {
             model      = $o.message.model
             durationMs = $dur
             tokens     = $tok
+            tokenStatus = $tokenStatus
             state      = $(switch ($o.message.stopReason) {
                             'stop'    { '✅ terminé' }
                             'toolUse' { '🔧 outils' }
@@ -188,7 +190,7 @@ if (Test-Path $conf.agentsRoot) {
                             default   { $o.message.stopReason } })
           })
           $hourly[$hKey].requests++
-          if ($tok) { $hourly[$hKey].tokens += $tok }
+          if ($tokenStatus -eq "reported") { $hourly[$hKey].tokens += $tok; $hourly[$hKey].reportedTokens += $tok } else { $hourly[$hKey].unknownRequests++ }
         }
         $lastTs = $tsCur
       }
@@ -202,7 +204,7 @@ $hourlyArr  = @($hourly.Values | Sort-Object h)
 # ---------- 7. statistiques cumulees (purge-proof) ----------
 New-Item -ItemType Directory -Force -Path $TelemetryDir | Out-Null
 $aggPath = Join-Path $TelemetryDir 'stats-aggregates.json'
-$agg = @{ firstTs = $null; lastTs = $null; tokensTotal = 0; requestsTotal = 0; eventsTotal = 0; byModel = @{}; hours = @{}; lastAggregatedTs = $null }
+$agg = @{ firstTs = $null; lastTs = $null; tokensTotal = 0; requestsTotal = 0; unknownRequestsTotal = 0; eventsTotal = 0; byModel = @{}; hours = @{}; lastAggregatedTs = $null }
 if (Test-Path $aggPath) {
   try {
     $a0 = Get-Content $aggPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -210,6 +212,7 @@ if (Test-Path $aggPath) {
     $agg.lastTs           = $a0.lastTs
     $agg.tokensTotal      = [long]$a0.tokensTotal
     $agg.requestsTotal    = [long]$a0.requestsTotal
+    $agg.unknownRequestsTotal = [long]$(if ($null -ne $a0.unknownRequestsTotal) { $a0.unknownRequestsTotal } else { 0 })
     $agg.eventsTotal      = [long]$a0.eventsTotal
     $agg.lastAggregatedTs = $a0.lastAggregatedTs
     if ($a0.byModel) { foreach ($p in $a0.byModel.PSObject.Properties) { $agg.byModel[$p.Name] = [long]$p.Value } }
@@ -272,6 +275,8 @@ foreach ($b in $hourlyArr) {
     events    = if ($hPrev) { [math]::Max([long]$hPrev.events, [long]$b.events) } else { [long]$b.events }
     requests  = if ($hPrev) { [math]::Max([long]$hPrev.requests, [long]$b.requests) } else { [long]$b.requests }
     tokens    = if ($hPrev) { [math]::Max([long]$hPrev.tokens, [long]$b.tokens) } else { [long]$b.tokens }
+    reportedTokens = if ($hPrev) { [math]::Max([long]$hPrev.reportedTokens, [long]$b.reportedTokens) } else { [long]$b.reportedTokens }
+    unknownRequests = if ($hPrev) { [math]::Max([long]$hPrev.unknownRequests, [long]$b.unknownRequests) } else { [long]$b.unknownRequests }
     firstSeen = if ($hPrev) { $hPrev.firstSeen } else { $ts }
   }
 }
@@ -281,9 +286,11 @@ foreach ($b in $hourlyArr) {
 #     immunise contre BOM et chargements partiels.
 $histLines = foreach ($k in ($hourlyHist.Keys | Sort-Object)) {
   $h = $hourlyHist[$k]
-  "{`"h`":`"" + $h.h + "`",`"events`":" + $h.events + ",`"requests`":" + $h.requests + ",`"tokens`":" + $h.tokens + ",`"firstSeen`":`"" + $h.firstSeen + "`"}"
+  "{`"h`":`"" + $h.h + "`",`"events`":" + $h.events + ",`"requests`":" + $h.requests + ",`"tokens`":" + $h.tokens + ",`"reportedTokens`":" + $h.reportedTokens + ",`"unknownRequests`":" + $h.unknownRequests + ",`"firstSeen`":`"" + $h.firstSeen + "`"}"
 }
-[System.IO.File]::WriteAllText($hourlyHistPath, (($histLines -join "`r`n") + "`r`n"), $utf8NoBom)
+[System.IO.File]::WriteAllText($hourlyHistPath, (($histLines -join "
+") + "
+"), $utf8NoBom)
 $hourlyHistCount = $hourlyHist.Count
 
 # 7d. memoire buckets en JSON (72 h suffisent pour les deltas)
@@ -292,7 +299,7 @@ $horizon = (Get-Date).AddHours(-72).ToString("yyyy-MM-ddTHH:00")
 
 $aggObj = [pscustomobject]@{
   firstTs = $agg.firstTs; lastTs = $agg.lastTs
-  tokensTotal = $agg.tokensTotal; requestsTotal = $agg.requestsTotal; eventsTotal = $agg.eventsTotal
+  tokensTotal = $agg.tokensTotal; requestsTotal = $agg.requestsTotal; unknownRequestsTotal = $agg.unknownRequestsTotal; eventsTotal = $agg.eventsTotal
   byModel = $agg.byModel; lastAggregatedTs = $agg.lastAggregatedTs
   hourlyHistoryCount = $hourlyHistCount
 }
