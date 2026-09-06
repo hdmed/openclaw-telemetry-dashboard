@@ -1,10 +1,14 @@
-# ============================================================
-#  TDB Collector v3 (portable) - OpenClaw Telemetry Dashboard
+﻿# ============================================================
+#  TDB Collector v4 (portable) - OpenClaw Telemetry Dashboard
 #  - Interroge la CLI OpenClaw (status --json) si disponible
 #  - Extrait le journal des actions depuis les transcripts
+#  - Suit input/output/cache separement (les providers muets
+#    sont estimes par longueur de contenu, marques "estimated")
 #  - Maintient des statistiques cumulees (stats-aggregates)
-#    qui survivent a la purge des journaux detailles
+#  - Gestion d'erreurs exhaustive : chaque ecriture protegee,
+#    resume des erreurs en fin d'execution
 #  - Ecrit telemetry/{latest.js, journal.js, aggregates.js,
+#    meta.js, hourly-history.js, hourly-history.jsonl,
 #    history.jsonl, stats-aggregates.json}
 #  Portable : chemins auto-detectes, surchargeables via
 #  config.local.json (jamais committe). Aucun appel LLM.
@@ -13,6 +17,15 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir    = $PSScriptRoot
 $TelemetryDir = Join-Path $ScriptDir 'telemetry'
 $utf8NoBom    = New-Object System.Text.UTF8Encoding($false)
+$script:errors = [System.Collections.Generic.List[string]]::new()
+function TryWrite($path, $content, $label) {
+  try { [System.IO.File]::WriteAllText($path, $content, $utf8NoBom); return $true }
+  catch { $script:errors.Add("$label : $($_.Exception.Message)"); return $false }
+}
+function SafeGet($path, $label) {
+  try { if (Test-Path $path) { return [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) } } catch { $script:errors.Add("$label read : $($_.Exception.Message)") }
+  return $null
+}
 
 # ---------- config locale optionnelle ----------
 $conf = @{
@@ -29,15 +42,10 @@ $confLocalPath = Join-Path $ScriptDir 'config.local.json'
 if (Test-Path $confLocalPath) {
   try {
     $lc = Get-Content $confLocalPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($lc.cliPath)        { $conf.cliPath        = [string]$lc.cliPath }
-    if ($lc.cfgPath)        { $conf.cfgPath        = [string]$lc.cfgPath }
-    if ($lc.agentsRoot)     { $conf.agentsRoot     = [string]$lc.agentsRoot }
-    if ($lc.historyMaxDays) { $conf.historyMaxDays = [int]$lc.historyMaxDays }
-    if ($lc.journalMax)     { $conf.journalMax     = [int]$lc.journalMax }
-    if ($lc.journalDays)    { $conf.journalDays    = [int]$lc.journalDays }
-    if ($lc.refreshMode)    { $conf.refreshMode    = [string]$lc.refreshMode }
-    if ($lc.intervalMinutes){ $conf.intervalMinutes= [int]$lc.intervalMinutes }
-  } catch { Write-Output ("TDB WARN config.local.json invalide : " + $_.Exception.Message) }
+    foreach ($k in 'cliPath','cfgPath','agentsRoot') { if ($lc.$k) { $conf.$k = [string]$lc.$k } }
+    foreach ($k in 'historyMaxDays','journalMax','journalDays','intervalMinutes') { if ($null -ne $lc.$k) { $conf.$k = [int]$lc.$k } }
+    if ($lc.refreshMode) { $conf.refreshMode = [string]$lc.refreshMode }
+  } catch { $script:errors.Add("config.local.json : $($_.Exception.Message)") }
 }
 
 # ---------- resolution CLI OpenClaw ----------
@@ -52,17 +60,19 @@ $cli = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Fi
 $ts = (Get-Date).ToString("yyyy-MM-ddTHH:mm:sszzz")
 $st = $null; $main = $null; $rec = @(); $agents = @(); $degraded = @()
 
-# ---------- 1. statut gateway (si CLI disponible) ----------
+# ---------- 1. statut gateway ----------
 if ($cli) {
   try {
-    $st = (& node $cli status --json 2>$null | Out-String) | ConvertFrom-Json
+    $rawStatus = (& node $cli status --json 2>$null | Out-String)
+    if ($rawStatus.Trim()) { $st = $rawStatus | ConvertFrom-Json }
+    if (-not $st) { throw 'status vide' }
     $rec  = @($st.sessions.recent | Where-Object { $_.key -notlike '*:cron:*' })
     $main = @($rec | Where-Object { $_.key -like 'agent:main:*' } | Select-Object -First 1)
     if (-not $main) { $main = $rec | Select-Object -First 1 }
-  } catch { $degraded += 'status' }
+  } catch { $degraded += 'status'; $script:errors.Add("status --json : $($_.Exception.Message)") }
 } else { $degraded += 'cli-absente' }
 
-# ---------- 2. agents + modeles (config locale) ----------
+# ---------- 2. agents + modeles ----------
 if (Test-Path $conf.cfgPath) {
   try {
     $cfg = Get-Content $conf.cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -75,7 +85,7 @@ if (Test-Path $conf.cfgPath) {
         active = $(if ($_.id -eq $st.agents.defaultId -or $_.default) { 1 } else { 0 })
       }
     })
-  } catch { $degraded += 'config' }
+  } catch { $degraded += 'config'; $script:errors.Add("config : $($_.Exception.Message)") }
 }
 
 # ---------- 3. lignes de sessions ----------
@@ -121,10 +131,11 @@ $json = [pscustomobject]@{
   agents          = $agents
 } | ConvertTo-Json -Depth 5 -Compress
 
-# ---------- 6. journal des actions (transcripts, fenetre journalDays) ----------
+# ---------- 6. journal des actions ----------
 $journal = New-Object System.Collections.Generic.List[object]
 $hourly  = @{}
 $since   = (Get-Date).AddDays(-$conf.journalDays)
+$parseErrors = 0
 
 if (Test-Path $conf.agentsRoot) {
   foreach ($ad in (Get-ChildItem $conf.agentsRoot -Directory -ErrorAction SilentlyContinue)) {
@@ -139,12 +150,12 @@ if (Test-Path $conf.agentsRoot) {
       foreach ($line in [System.IO.File]::ReadLines($f.FullName)) {
         if ($line.Length -lt 30) { continue }
         $o = $null
-        try { $o = $line | ConvertFrom-Json } catch { continue }
+        try { $o = $line | ConvertFrom-Json } catch { $parseErrors++; continue }
         if (-not $o.timestamp) { continue }
         $tsCur = [datetime]$o.timestamp
         $hKey = $tsCur.ToString("yyyy-MM-ddTHH:00")
         if (-not $hourly.ContainsKey($hKey)) {
-          $hourly[$hKey] = [pscustomobject]@{ h = $hKey; events = 0; requests = 0; tokens = 0; reportedTokens = 0; unknownRequests = 0 }
+          $hourly[$hKey] = [pscustomobject]@{ h = $hKey; events = 0; requests = 0; tokens = 0; reportedTokens = 0; inputTokens = 0; outputTokens = 0; unknownRequests = 0 }
         }
         $hourly[$hKey].events++
 
@@ -168,18 +179,26 @@ if (Test-Path $conf.agentsRoot) {
           $action = if ($tools.Count) { (($tools | Select-Object -Unique) -join ', ') } else { 'réponse' }
           $dur = $null
           if ($lastTs) { $dur = [int]($tsCur - $lastTs).TotalMilliseconds; if ($dur -lt 0) { $dur = $null } }
-          $tok = $null
-          $tokenStatus = "unknown"
-          if ($u -and $null -ne $u.totalTokens -and [long]$u.totalTokens -gt 0) { $tok = [long]$u.totalTokens; $tokenStatus = "reported" }
-          elseif ($u -and [long]$u.totalTokens -eq 0) {
-            $textLen = 0
+
+          # --- classification tokens : reported > estimated > unknown ---
+          $tok = $null; $tokIn = $null; $tokOut = $null; $tokenStatus = "unknown"
+          if ($u -and [long]$u.totalTokens -gt 0) {
+            $tok = [long]$u.totalTokens
+            $tokIn = [long]$u.input
+            $tokOut = [long]$u.output
+            $tokenStatus = "reported"
+          } elseif ($u -and [long]$u.totalTokens -eq 0) {
+            # provider muet : estimation par longueur de contenu
+            $outLen = 0; $thinkLen = 0
             foreach ($part in @($o.message.content)) {
-              if ($part.type -eq "text" -and $part.text) { $textLen += $part.text.Length }
-              elseif ($part.type -eq "thinking" -and $part.thinking) { $textLen += $part.thinking.Length }
+              if ($part.type -eq "text" -and $part.text) { $outLen += $part.text.Length }
+              elseif ($part.type -eq "thinking" -and $part.thinking) { $thinkLen += $part.thinking.Length }
             }
-            $tok = [long][math]::Ceiling($textLen / 3.5)
+            $tokOut = [long][math]::Ceiling($outLen / 3.5)
+            $tok = $tokOut + [long][math]::Ceiling($thinkLen / 3.5)
             $tokenStatus = "estimated"
           }
+
           $journal.Add([pscustomobject]@{
             ts         = $tsCur.ToString("yyyy-MM-ddTHH:mm:sszzz")
             agent      = $agentId
@@ -190,6 +209,8 @@ if (Test-Path $conf.agentsRoot) {
             model      = $o.message.model
             durationMs = $dur
             tokens     = $tok
+            inputTokens  = $tokIn
+            outputTokens = $tokOut
             tokenStatus = $tokenStatus
             state      = $(switch ($o.message.stopReason) {
                             'stop'    { '✅ terminé' }
@@ -199,7 +220,10 @@ if (Test-Path $conf.agentsRoot) {
                             default   { $o.message.stopReason } })
           })
           $hourly[$hKey].requests++
-          if ($tok) { $hourly[$hKey].tokens += $tok; $hourly[$hKey].reportedTokens += $tok }
+          if ($tok) { $hourly[$hKey].tokens += $tok }
+          if ($tokenStatus -eq "reported") { $hourly[$hKey].reportedTokens += $tok }
+          if ($tokIn) { $hourly[$hKey].inputTokens += $tokIn }
+          if ($tokOut) { $hourly[$hKey].outputTokens += $tokOut }
           if ($tokenStatus -eq "unknown") { $hourly[$hKey].unknownRequests++ }
         }
         $lastTs = $tsCur
@@ -207,39 +231,42 @@ if (Test-Path $conf.agentsRoot) {
     }
   }
 }
+if ($parseErrors -gt 0) { $script:errors.Add("transcript parse : $parseErrors lignes ignorees") }
 
 $journalArr = @($journal | Sort-Object { [datetime]$_.ts })
 $hourlyArr  = @($hourly.Values | Sort-Object h)
 
-# ---------- 7. statistiques cumulees (purge-proof) ----------
+# ---------- 7. statistiques cumulees ----------
 New-Item -ItemType Directory -Force -Path $TelemetryDir | Out-Null
 $aggPath = Join-Path $TelemetryDir 'stats-aggregates.json'
-$agg = @{ firstTs = $null; lastTs = $null; tokensTotal = 0; requestsTotal = 0; unknownRequestsTotal = 0; eventsTotal = 0; byModel = @{}; hours = @{}; lastAggregatedTs = $null }
-if (Test-Path $aggPath) {
+$agg = @{ firstTs = $null; lastTs = $null; tokensTotal = 0; inputTokensTotal = 0; outputTokensTotal = 0; requestsTotal = 0; unknownRequestsTotal = 0; eventsTotal = 0; byModel = @{}; hours = @{}; lastAggregatedTs = $null }
+$aggRaw = SafeGet $aggPath 'aggregates'
+if ($aggRaw) {
   try {
-    $a0 = Get-Content $aggPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $a0 = $aggRaw | ConvertFrom-Json
     $agg.firstTs          = $a0.firstTs
     $agg.lastTs           = $a0.lastTs
     $agg.tokensTotal      = [long]$a0.tokensTotal
     $agg.requestsTotal    = [long]$a0.requestsTotal
     $agg.unknownRequestsTotal = [long]$(if ($null -ne $a0.unknownRequestsTotal) { $a0.unknownRequestsTotal } else { 0 })
+    $agg.inputTokensTotal  = [long]$(if ($null -ne $a0.inputTokensTotal) { $a0.inputTokensTotal } else { 0 })
+    $agg.outputTokensTotal = [long]$(if ($null -ne $a0.outputTokensTotal) { $a0.outputTokensTotal } else { 0 })
     $agg.eventsTotal      = [long]$a0.eventsTotal
     $agg.lastAggregatedTs = $a0.lastAggregatedTs
     if ($a0.byModel) { foreach ($p in $a0.byModel.PSObject.Properties) { $agg.byModel[$p.Name] = [long]$p.Value } }
     if ($a0.hours)   { foreach ($p in $a0.hours.PSObject.Properties)   { $agg.hours[$p.Name]   = [long]$p.Value } }
-  } catch { Write-Output ("TDB WARN aggregates illisibles, reprise a zero : " + $_.Exception.Message) }
+  } catch { $script:errors.Add("aggregates load : $($_.Exception.Message)") }
 }
 
-# Historique horaire IMMORTEL (append-only, jamais purge) - source de verite
+# Historique horaire IMMORTEL
 $hourlyHistPath = Join-Path $TelemetryDir 'hourly-history.jsonl'
 $hourlyHist     = @{}
-$persisted      = @{}   # etat tel qu'il etait sur disque avant cette collecte
-if (Test-Path $hourlyHistPath) {
-  $histRaw = [System.IO.File]::ReadAllLines($hourlyHistPath)
-  foreach ($line in $histRaw) {
-    if (-not $line) { continue }
-    $line = $line.TrimStart([char]0xFEFF)   # immunise contre le BOM
-    if ($line.Length -lt 10) { continue }
+$persisted      = @{}
+$histRaw = SafeGet $hourlyHistPath 'hourly-history'
+if ($histRaw) {
+  foreach ($line in ($histRaw -split "`r?`n")) {
+    if (-not $line -or $line.Length -lt 10) { continue }
+    $line = $line.TrimStart([char]0xFEFF)
     $r = $null
     try { $r = $line | ConvertFrom-Json } catch { continue }
     if ($r.h) {
@@ -248,6 +275,10 @@ if (Test-Path $hourlyHistPath) {
         events    = [long]$r.events
         requests  = [long]$r.requests
         tokens    = [long]$r.tokens
+        inputTokens  = [long]$(if ($null -ne $r.inputTokens) { $r.inputTokens } else { 0 })
+        outputTokens = [long]$(if ($null -ne $r.outputTokens) { $r.outputTokens } else { 0 })
+        reportedTokens = [long]$(if ($null -ne $r.reportedTokens) { $r.reportedTokens } else { $r.tokens })
+        unknownRequests = [long]$(if ($null -ne $r.unknownRequests) { $r.unknownRequests } else { 0 })
         firstSeen = $r.firstSeen
       }
       $persisted[$r.h] = [long]$r.events
@@ -255,14 +286,17 @@ if (Test-Path $hourlyHistPath) {
   }
 }
 
-# 7a. actions nouvelles seulement (strictement posterieures au dernier agrégé)
+# 7a. actions nouvelles
 $lastAgg = $null
 if ($agg.lastAggregatedTs) { $lastAgg = [datetime]$agg.lastAggregatedTs }
 $newEntries = @($journalArr | Where-Object { -not $lastAgg -or ([datetime]$_.ts) -gt $lastAgg })
 foreach ($e in $newEntries) {
   $t = [datetime]$e.ts
   if ($e.tokens) { $agg.tokensTotal += [long]$e.tokens }
+  if ($e.inputTokens) { $agg.inputTokensTotal += [long]$e.inputTokens }
+  if ($e.outputTokens) { $agg.outputTokensTotal += [long]$e.outputTokens }
   $agg.requestsTotal++
+  if ($e.tokenStatus -eq "unknown") { $agg.unknownRequestsTotal++ }
   if (-not $agg.firstTs -or $t -lt [datetime]$agg.firstTs) { $agg.firstTs = $e.ts }
   if (-not $agg.lastTs  -or $t -gt [datetime]$agg.lastTs)  { $agg.lastTs  = $e.ts }
   $m = $(if ($e.model) { $e.model } else { 'unknown' })
@@ -271,13 +305,12 @@ foreach ($e in $newEntries) {
   if (-not $agg.lastAggregatedTs -or $t -gt [datetime]$agg.lastAggregatedTs) { $agg.lastAggregatedTs = $e.ts }
 }
 
-# 7b. evenements : deltas positifs par bucket horaire
+# 7b. evenements + miroir historique immortel
 foreach ($b in $hourlyArr) {
   $prev = 0
   if ($agg.hours.ContainsKey($b.h)) { $prev = [long]$agg.hours[$b.h] }
   if ($b.events -gt $prev) { $agg.eventsTotal += ([long]$b.events - $prev) }
   $agg.hours[$b.h] = [long]$b.events
-  # miroir dans l'historique immortel (max par champ, jamais perdu)
   $existed = $hourlyHist.ContainsKey($b.h)
   $hPrev = $(if ($existed) { $hourlyHist[$b.h] } else { $null })
   $hourlyHist[$b.h] = [pscustomobject]@{
@@ -285,61 +318,66 @@ foreach ($b in $hourlyArr) {
     events    = if ($hPrev) { [math]::Max([long]$hPrev.events, [long]$b.events) } else { [long]$b.events }
     requests  = if ($hPrev) { [math]::Max([long]$hPrev.requests, [long]$b.requests) } else { [long]$b.requests }
     tokens    = if ($hPrev) { [math]::Max([long]$hPrev.tokens, [long]$b.tokens) } else { [long]$b.tokens }
+    inputTokens  = if ($hPrev) { [math]::Max([long]$hPrev.inputTokens, [long]$b.inputTokens) } else { [long]$b.inputTokens }
+    outputTokens = if ($hPrev) { [math]::Max([long]$hPrev.outputTokens, [long]$b.outputTokens) } else { [long]$b.outputTokens }
     reportedTokens = if ($hPrev) { [math]::Max([long]$hPrev.reportedTokens, [long]$b.reportedTokens) } else { [long]$b.reportedTokens }
     unknownRequests = if ($hPrev) { [math]::Max([long]$hPrev.unknownRequests, [long]$b.unknownRequests) } else { [long]$b.unknownRequests }
     firstSeen = if ($hPrev) { $hPrev.firstSeen } else { $ts }
   }
 }
 
-# 7c. ecriture de l'historique immortel : REWRITE fusionnel trie (upsert max).
-#     Rien ne se perd (toutes les valeurs maximales conservees), pas de doublon,
-#     immunise contre BOM et chargements partiels.
+# 7c. ecriture historique immortel
 $histLines = foreach ($k in ($hourlyHist.Keys | Sort-Object)) {
   $h = $hourlyHist[$k]
-  "{`"h`":`"" + $h.h + "`",`"events`":" + $h.events + ",`"requests`":" + $h.requests + ",`"tokens`":" + $h.tokens + ",`"reportedTokens`":" + $h.reportedTokens + ",`"unknownRequests`":" + $h.unknownRequests + ",`"firstSeen`":`"" + $h.firstSeen + "`"}"
+  "{`"h`":`"" + $h.h + "`",`"events`":" + $h.events + ",`"requests`":" + $h.requests + ",`"tokens`":" + $h.tokens + ",`"inputTokens`":" + $h.inputTokens + ",`"outputTokens`":" + $h.outputTokens + ",`"reportedTokens`":" + $h.reportedTokens + ",`"unknownRequests`":" + $h.unknownRequests + ",`"firstSeen`":`"" + $h.firstSeen + "`"}"
 }
-[System.IO.File]::WriteAllText($hourlyHistPath, (($histLines -join "
-") + "
-"), $utf8NoBom)
+$histContent = (($histLines -join "`r`n") + "`r`n")
+if (-not (TryWrite $hourlyHistPath $histContent 'hourly-history.jsonl')) { $script:errors.Add('hourly-history.jsonl : ecriture echouee') }
 $hourlyHistCount = $hourlyHist.Count
 
-# 7d. memoire buckets en JSON (72 h suffisent pour les deltas)
+# 7d. memoire buckets (72 h)
 $horizon = (Get-Date).AddHours(-72).ToString("yyyy-MM-ddTHH:00")
 @($agg.hours.Keys) | Where-Object { $_ -lt $horizon } | ForEach-Object { $agg.hours.Remove($_) }
 
 $aggObj = [pscustomobject]@{
   firstTs = $agg.firstTs; lastTs = $agg.lastTs
-  tokensTotal = $agg.tokensTotal; requestsTotal = $agg.requestsTotal; unknownRequestsTotal = $agg.unknownRequestsTotal; eventsTotal = $agg.eventsTotal
+  tokensTotal = $agg.tokensTotal; inputTokensTotal = $agg.inputTokensTotal; outputTokensTotal = $agg.outputTokensTotal
+  requestsTotal = $agg.requestsTotal; unknownRequestsTotal = $agg.unknownRequestsTotal; eventsTotal = $agg.eventsTotal
   byModel = $agg.byModel; lastAggregatedTs = $agg.lastAggregatedTs
   hourlyHistoryCount = $hourlyHistCount
 }
 
-# ---------- 8. ecriture des fichiers ----------
+# ---------- 8. ecriture des fichiers (chaque ecriture protegee) ----------
 $jJson = ($journalArr | ConvertTo-Json -Depth 4 -Compress); if (-not $jJson) { $jJson = '[]' }
 if ($journalArr.Count -eq 1) { $jJson = '[' + $jJson + ']' }
 $hJson = ($hourlyArr  | ConvertTo-Json -Depth 4 -Compress); if (-not $hJson) { $hJson = '[]' }
 if ($hourlyArr.Count  -eq 1) { $hJson = '[' + $hJson + ']' }
 $aJson = ($aggObj | ConvertTo-Json -Depth 5 -Compress)
 
-[System.IO.File]::WriteAllText((Join-Path $TelemetryDir 'latest.js'),     ("window.TDB_REMOTE="  + $json  + ";"), $utf8NoBom)
-[System.IO.File]::WriteAllText((Join-Path $TelemetryDir 'journal.js'),    ("window.TDB_JOURNAL=" + $jJson + ";window.TDB_HOURLY=" + $hJson + ";"), $utf8NoBom)
-[System.IO.File]::WriteAllText((Join-Path $TelemetryDir 'aggregates.js'), ("window.TDB_AGGR="    + $aJson + ";"), $utf8NoBom)
+TryWrite (Join-Path $TelemetryDir 'latest.js')     ("window.TDB_REMOTE="  + $json  + ";") 'latest.js'     | Out-Null
+TryWrite (Join-Path $TelemetryDir 'journal.js')    ("window.TDB_JOURNAL=" + $jJson + ";window.TDB_HOURLY=" + $hJson + ";") 'journal.js' | Out-Null
+TryWrite (Join-Path $TelemetryDir 'aggregates.js') ("window.TDB_AGGR="    + $aJson + ";") 'aggregates.js' | Out-Null
 $metaObj = [pscustomobject]@{ refreshMode = $conf.refreshMode; intervalMinutes = [int]$conf.intervalMinutes; generated = $ts }
-[System.IO.File]::WriteAllText((Join-Path $TelemetryDir 'meta.js'), ("window.TDB_META=" + ($metaObj | ConvertTo-Json -Compress) + ";"), $utf8NoBom)
+TryWrite (Join-Path $TelemetryDir 'meta.js') ("window.TDB_META=" + ($metaObj | ConvertTo-Json -Compress) + ";") 'meta.js' | Out-Null
 $histArr = @($hourlyHist.Values | Sort-Object h)
-$hJson = ($histArr | ConvertTo-Json -Depth 3 -Compress); if (-not $hJson) { $hJson = '[]' }
-if ($histArr.Count -eq 1) { $hJson = '[' + $hJson + ']' }
-[System.IO.File]::WriteAllText((Join-Path $TelemetryDir 'hourly-history.js'), ("window.TDB_HIST=" + $hJson + ";"), $utf8NoBom)
-[System.IO.File]::WriteAllText($aggPath, ($aggObj | ConvertTo-Json -Depth 5), $utf8NoBom)
+$hJson2 = ($histArr | ConvertTo-Json -Depth 3 -Compress); if (-not $hJson2) { $hJson2 = '[]' }
+if ($histArr.Count -eq 1) { $hJson2 = '[' + $hJson2 + ']' }
+TryWrite (Join-Path $TelemetryDir 'hourly-history.js') ("window.TDB_HIST=" + $hJson2 + ";") 'hourly-history.js' | Out-Null
+TryWrite $aggPath ($aggObj | ConvertTo-Json -Depth 5) 'stats-aggregates.json' | Out-Null
 
-Add-Content -Path (Join-Path $TelemetryDir 'history.jsonl') -Value $json -Encoding UTF8
+try { Add-Content -Path (Join-Path $TelemetryDir 'history.jsonl') -Value $json -Encoding UTF8 } catch { $script:errors.Add("history.jsonl append : $($_.Exception.Message)") }
 $histPath = Join-Path $TelemetryDir 'history.jsonl'
-$histCut  = (Get-Date).AddDays(-$conf.historyMaxDays)
-$lines = @(Get-Content $histPath -Encoding UTF8 | Where-Object {
-  $_.Trim() -and $(if ($_ -match '"ts":"([^"]+)"') { [datetime]$Matches[1] -ge $histCut } else { $true })
-})
-if ($lines.Count -gt 0) { $lines | Set-Content -Path $histPath -Encoding UTF8 }
+try {
+  $histCut  = (Get-Date).AddDays(-$conf.historyMaxDays)
+  $lines = @(Get-Content $histPath -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object {
+    $_.Trim() -and $(if ($_ -match '"ts":"([^"]+)"') { [datetime]$Matches[1] -ge $histCut } else { $true })
+  })
+  if ($lines.Count -gt 0) { $lines | Set-Content -Path $histPath -Encoding UTF8 }
+} catch { $script:errors.Add("history.jsonl purge : $($_.Exception.Message)") }
 
+# ---------- resume ----------
 $deg = ''
-if ($degraded.Count) { $deg = ' (mode degrade : ' + ($degraded -join ', ') + ')' }
-Write-Output ("TDB OK $ts - journal=" + $journalArr.Count + " actions - aggTokens=" + $agg.tokensTotal + " - evt=" + $agg.eventsTotal + " - hoursPersisted=" + $hourlyHistCount + $deg)
+if ($degraded.Count) { $deg = ' (degrade : ' + ($degraded -join ', ') + ')' }
+$errSummary = ''
+if ($script:errors.Count) { $errSummary = ' - ERREURS: ' + $script:errors.Count + ' [' + ($script:errors[0]) + ']' }
+Write-Output ("TDB OK $ts - journal=" + $journalArr.Count + " - aggTok=" + $agg.tokensTotal + " (in=" + $agg.inputTokensTotal + " out=" + $agg.outputTokensTotal + ") - evt=" + $agg.eventsTotal + " - unk=" + $agg.unknownRequestsTotal + " - hours=" + $hourlyHistCount + $deg + $errSummary)
