@@ -94,13 +94,13 @@
 <body>
 <header>
   <span class="logo">🦞</span>
-  <h1 data-i18n-html="header.title"><small data-i18n-html="header.subtitle"></small></h1>
+  <h1><span data-i18n="header.title">OpenClaw · TDB Télémétrie</span><small data-i18n="header.subtitle">agents · tokens · coût · activité</small></h1>
   <div class="badges">
     <select id="langSel" title="Language" style="background:var(--card);border:1px solid var(--border);color:var(--txt);font:12px ui-monospace,monospace;padding:4px 8px;border-radius:14px;cursor:pointer;outline:none">
   <option value="fr">FR</option><option value="en">EN</option><option value="es">ES</option><option value="zh">ZH</option>
 </select>
   <button class="sync" id="btnSync" onclick="TDB.requestCollect()" data-i18n="btn.sync" style="margin-left:0;margin-right:4px">⟳ Synchroniser</button>
-    <span class="badge">⚙️ Gateway 2026.6.8</span>
+    <span class="badge" id="bGw">⚙️ Gateway</span>
     <span class="badge" id="bRefresh">⏱ rafraîchissement : -</span>
     <span class="badge" id="bFresh"><span class="dot"></span><span id="bFreshTxt">initialisation...</span></span>
     <span class="badge" id="bLast">🕐 dernière collecte : -</span>
@@ -109,7 +109,7 @@
 
 <section class="card full" id="helpCard" style="margin-bottom:14px">
   <div class="sec-title" style="margin:0">
-    <h3 style="margin:0"><span data-i18n-html="help.title">📖 Aide — rafraîchissement &amp; données</span></h3>
+    <h3 style="margin:0"><span data-i18n="help.title">📖 Aide — rafraîchissement &amp; données</span></h3>
     <button class="chip" id="helpToggle" style="margin-left:auto" data-i18n="help.toggle.hide">masquer</button>
   </div>
   <div id="helpBody" style="display:grid;gap:6px;font-size:13px;color:var(--muted);margin-top:10px">
@@ -159,8 +159,8 @@
 <div style="height:14px"></div>
 
 <section class="grid rowc">
-  <div class="card"><h3 data-i18n-html="chart.tokensTime">Tokens dans le temps — cumul &amp; dernier tour</h3><div class="canvas-wrap"><canvas id="cTokens"></canvas></div><div class="chart-fallback">📊 Graphique indisponible (Chart.js CDN hors ligne) — les KPI et tableaux restent actifs.</div></div>
-  <div class="card"><h3 data-i18n-html="chart.model">Répartition des tokens par modèle</h3><div class="canvas-wrap" style="height:200px"><canvas id="cModel"></canvas></div><div class="chart-fallback">Graphique indisponible.</div></div>
+  <div class="card"><h3 data-i18n="chart.tokensTime">Tokens dans le temps — cumul &amp; dernier tour</h3><div class="canvas-wrap"><canvas id="cTokens"></canvas></div><div class="chart-fallback">📊 Graphique indisponible (Chart.js CDN hors ligne) — les KPI et tableaux restent actifs.</div></div>
+  <div class="card"><h3 data-i18n="chart.model">Répartition des tokens par modèle</h3><div class="canvas-wrap" style="height:200px"><canvas id="cModel"></canvas></div><div class="chart-fallback">Graphique indisponible.</div></div>
 </section>
 
 <div style="height:14px"></div>
@@ -207,7 +207,7 @@
 </section>
 
 <footer>
-  <span>🦞 TDB v0.2.0 · données 100 % locales · <span style="font-family:var(--mono)">telemetry/</span> hors dépôt Git · docs : README + docs\</span>
+  <span>🦞 TDB v0.2.1 · données 100 % locales · <span style="font-family:var(--mono)">telemetry/</span> hors dépôt Git · docs : README + docs\</span>
 </footer>
 
 <div class="toast" id="toast"></div>
@@ -229,34 +229,27 @@ function tApply(root){
       const [k,a]=p.split(':'); if(k&&a) el.setAttribute(a, t(k));
     });
   });
-  if(window.TDB_META){ /* refresh refreshMode badge text */ const m=document.getElementById('bRefresh'); if(m) m.textContent=t('header.refresh.unknown').replace('—','')+document.getElementById('bRefresh').textContent.replace(t('header.refresh.unknown').replace('—',''),''); }
+  if(typeof renderMeta==='function'){ renderMeta(); }
 }
 function tSetLang(lang, reload){
   const url='i18n/'+lang+'.js?ts='+Date.now();
   const s=document.createElement('script'); s.src=url;
-  s.onload=()=>{ try{localStorage.setItem('tdb_lang',lang);}catch(e){} tApply(); if(reload&&window.TDB) window.location.reload(); else if(window.render) window.render(HIST[HIST.length-1]||{}); /* safe re-render */ };
+  s.onload=()=>{ try{localStorage.setItem('tdb_lang',lang);}catch(e){} tApply(); if(typeof renderMeta==='function'){ renderMeta(); } if(reload&&window.TDB) window.location.reload(); };
   document.body.appendChild(s);
 }
-(function(){
-  let lang='fr'; try{const v=localStorage.getItem('tdb_lang'); if(v) lang=v; else if(navigator.language){lang=(navigator.language||'fr').slice(0,2).toLowerCase(); if(['fr','en','es','zh'].indexOf(lang)<0) lang='fr';}}catch(e){}
-  const sel=document.getElementById('langSel'); if(sel) sel.value=lang;
-  // attend que le DOM soit pret
-  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',()=>tApply());} else { setTimeout(tApply,0); }
-})();
-</script>
-
-<script>
 (function(){
   let lang='fr'; try{const v=localStorage.getItem('tdb_lang'); if(v) lang=v; else if(navigator.language){lang=(navigator.language||'fr').slice(0,2).toLowerCase(); if(['fr','en','es','zh'].indexOf(lang)<0) lang='fr';}}catch(e){}
   const sel=document.getElementById('langSel'); if(sel){
     sel.value=lang;
     sel.addEventListener('change',e=>{ tSetLang(e.target.value, false); });
   }
+  // applique les traductions une fois le DOM pret
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',()=>tApply());} else { setTimeout(tApply,0); }
 })();
 </script>
 
 <script>
-const KEY='***', PAGE=50;
+const KEY='tdb_hist_v1', PAGE=50;
 let HIST=[], JOURNAL=[], HOURLY=[], period='tout', jp=1;
 let charts={tokens:null,model:null,hourly:null};
 const $=id=>document.getElementById(id);
@@ -268,7 +261,7 @@ const hhmm=ts=>new Date(ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2
 const hhlabel=h=>{const d=new Date(h);return d.toLocaleTimeString('fr-FR',{hour:'2-digit'})+'h'};
 const shortModel=m=>!m?'-':String(m).split('/').pop().replace(':free','').replace('-550b-a55b','');
 const shortProv=p=>!p?'-':(String(p).startsWith('custom__')?'custom':String(p));
-const norm=d=>({ts:d.ts||new Date().toISOString(),model:d.model||'-',provider:d.provider||'-',runIn:d.runIn??null,runOut:d.runOut??null,totalTokens:d.totalTokens??null,costUsd:d.costUsd??null,cacheHitPct:d.cacheHitPct??null,cachedTokens:d.cachedTokens??null,contextTokens:d.contextTokens??null,contextLimit:d.contextLimit??null,compactions:d.compactions??null,uptimeGateway:d.uptimeGateway||'-',sessionsActive:d.sessionsActive??null,sessionsTotal:d.sessionsTotal??null,agentsTotal:d.agentsTotal??null,cronsTotal:d.cronsTotal??0,subagentsActive:d.subagentsActive??0,channels:d.channels||'-',sessions:d.sessions||[],agents:d.agents||[]});
+const norm=d=>({ts:d.ts||new Date().toISOString(),model:d.model||'-',provider:d.provider||'-',runtimeVersion:d.runtimeVersion||null,runIn:d.runIn??null,runOut:d.runOut??null,totalTokens:d.totalTokens??null,costUsd:d.costUsd??null,cacheHitPct:d.cacheHitPct??null,cachedTokens:d.cachedTokens??null,contextTokens:d.contextTokens??null,contextLimit:d.contextLimit??null,compactions:d.compactions??null,uptimeGateway:d.uptimeGateway||'-',sessionsActive:d.sessionsActive??null,sessionsTotal:d.sessionsTotal??null,agentsTotal:d.agentsTotal??null,cronsTotal:d.cronsTotal??0,subagentsActive:d.subagentsActive??0,channels:d.channels||'-',sessions:d.sessions||[],agents:d.agents||[]});
 const PERIODS={'1h':36e5,'6h':216e5,'24h':864e5,'7j':6048e5,'tout':null};
 const cutoff=()=>PERIODS[period]?Date.now()-PERIODS[period]:null;
 const inPeriod=ts=>{const c=cutoff();return !c||new Date(ts).getTime()>=c};
@@ -276,7 +269,7 @@ const inPeriod=ts=>{const c=cutoff();return !c||new Date(ts).getTime()>=c};
 /* ---------- données distantes ---------- */
 function pullRemote(manual){
   let done=0, news=false;
-  const fin=()=>{ if(++done===5 && manual && !news) toast('Pas de nouvelle collecte. Prochain cycle auto dans ≤ 5 min (ou demandez « sync TDB » dans le chat).'); };
+  const fin=()=>{ if(++done===5 && manual && !news){ const M=window.TDB_META||{}; toast(M.refreshMode==='manual' ? 'Pas de nouvelle collecte. Lancez collect.bat (ou « sync TDB » dans le chat).' : 'Pas de nouvelle collecte. Prochain cycle auto dans ≤ '+((M.intervalMinutes||5))+' min.'); } };
   const s1=document.createElement('script'); s1.src='telemetry/latest.js?ts='+Date.now();
   s1.onload=()=>{const r=window.TDB_REMOTE,last=HIST[HIST.length-1];
     if(r&&(!last||new Date(r.ts)>new Date(last.ts))){HIST.push(norm(r));if(HIST.length>720)HIST=HIST.slice(-720);try{localStorage.setItem(KEY,JSON.stringify(HIST))}catch(e){}render(r);news=true;if(manual)toast('✅ Nouvelle collecte chargée - '+hhmm(r.ts))}
@@ -316,6 +309,7 @@ function render(d){
   $('mComp').textContent=d.compactions??'-'; $('mChan').textContent=d.channels;
   $('tAgents').tBodies[0].innerHTML=(d.agents.length?d.agents:[{id:'main',name:'main',model:d.model,active:1}]).map(a=>'<tr><td style="font-family:var(--mono)">'+a.id+'</td><td>'+a.name+'</td><td style="font-family:var(--mono);font-size:11.5px">'+a.model+'</td><td style="text-align:right"><span class="pill'+(a.active?'':' idle')+'">'+(a.active?'● actif':'prêt')+'</span></td></tr>').join('');
   $('tSess').tBodies[0].innerHTML=(d.sessions.length?d.sessions:[{key:'-',channel:'-',model:d.model,tokens:d.totalTokens,cost:d.costUsd,status:'running'}]).map(s=>'<tr><td style="font-family:var(--mono);font-size:11.5px">'+s.key+'</td><td>'+s.channel+'</td><td style="font-family:var(--mono);font-size:11px">'+s.model+'</td><td class="num">'+fmtK(s.tokens)+'</td><td class="num">'+fmtCost(s.cost)+'</td><td style="text-align:right"><span class="pill">'+(s.status||'running')+'</span></td></tr>').join('');
+  if(d.runtimeVersion){ $('bGw').textContent='⚙️ Gateway '+d.runtimeVersion; }
   $('bLast').textContent='🕐 dernière collecte : '+hhmm(d.ts)+' ('+ageTxt(d.ts)+')';
   if(window.Chart) drawBase(d);
 }
@@ -451,7 +445,8 @@ window.TDB={
    *  À coupler avec une demande 'sync TDB' dans le chat. */
   requestCollect(){
     const b=$('btnSync'); b.classList.add('busy'); b.textContent='⏳ collecte...';
-    toast('Demande envoyée : dites « sync TDB » dans le chat pour déclencher la collecte. Le bouton passera au vert dès le nouveau snapshot reçu.');
+    const M0=window.TDB_META||{};
+    toast(M0.refreshMode==='manual' ? 'Dites « sync TDB » dans le chat, ou lancez collect.bat. Le bouton passera au vert dès le nouveau snapshot reçu.' : 'Collecte en cours — le bouton passera au vert dès le nouveau snapshot reçu.');
     const t0=Date.now(), lastTs=HIST.length?HIST[HIST.length-1].ts:null;
     const tick=()=>{
       const last=HIST[HIST.length-1];
@@ -463,7 +458,8 @@ window.TDB={
       }
       if(Date.now()-t0>60000){
         b.classList.remove('busy'); b.textContent='⟳ Synchroniser';
-        toast('Aucune nouvelle collecte reçue en 60 s. Ré-essayez ou attendez le prochain cycle auto (≤ 5 min).');
+        const M=window.TDB_META||{};
+        toast(M.refreshMode==='manual' ? 'Aucune nouvelle collecte reçue en 60 s. Lancez collect.bat, ou dites « sync TDB » dans le chat.' : 'Aucune nouvelle collecte reçue en 60 s. Prochain cycle auto dans ≤ '+((M.intervalMinutes||5))+' min.');
         return;
       }
       pullRemote(false);

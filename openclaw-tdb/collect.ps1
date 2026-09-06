@@ -58,7 +58,7 @@ $candidates += @(
 $cli = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
 $ts = (Get-Date).ToString("yyyy-MM-ddTHH:mm:sszzz")
-$st = $null; $main = $null; $rec = @(); $agents = @(); $degraded = @()
+$st = $null; $main = $null; $rec = @(); $allRecent = @(); $agents = @(); $degraded = @()
 
 # ---------- 1. statut gateway ----------
 if ($cli) {
@@ -66,8 +66,13 @@ if ($cli) {
     $rawStatus = (& node $cli status --json 2>$null | Out-String)
     if ($rawStatus.Trim()) { $st = $rawStatus | ConvertFrom-Json }
     if (-not $st) { throw 'status vide' }
-    $rec  = @($st.sessions.recent | Where-Object { $_.key -notlike '*:cron:*' })
-    $main = @($rec | Where-Object { $_.key -like 'agent:main:*' } | Select-Object -First 1)
+    $allRecent = @($st.sessions.recent)
+    $rec       = @($allRecent | Where-Object { $_.key -notlike '*:cron:*' })
+    # session principale : privilegier une session a compteurs frais
+    # (sinon les KPI du snapshot passent a null selon la session sondee)
+    $main = @($rec | Where-Object { $_.key -like 'agent:main:*' -and $_.totalTokensFresh -and $_.totalTokens } | Select-Object -First 1)
+    if (-not $main) { $main = @($rec | Where-Object { $_.totalTokensFresh -and $_.totalTokens } | Select-Object -First 1) }
+    if (-not $main) { $main = @($rec | Where-Object { $_.key -like 'agent:main:*' } | Select-Object -First 1) }
     if (-not $main) { $main = $rec | Select-Object -First 1 }
   } catch { $degraded += 'status'; $script:errors.Add("status --json : $($_.Exception.Message)") }
 } else { $degraded += 'cli-absente' }
@@ -111,6 +116,7 @@ $json = [pscustomobject]@{
   ts              = $ts
   model           = $(if ($main) { $main.selectedModel } else { $null })
   provider        = $(if ($main -and $main.configuredModel) { ($main.configuredModel -split '/')[0] } else { $null })
+  runtimeVersion  = $(if ($st -and $st.runtimeVersion) { $st.runtimeVersion } else { $null })
   runIn           = $(if ($main) { $main.inputTokens } else { $null })
   runOut          = $(if ($main) { $main.outputTokens } else { $null })
   totalTokens     = $(if ($main) { $main.totalTokens } else { $null })
@@ -124,9 +130,9 @@ $json = [pscustomobject]@{
   sessionsActive  = @($rec | Where-Object { $_.age -lt 3600000 }).Count
   sessionsTotal   = $(if ($st) { $st.sessions.count } else { 0 })
   agentsTotal     = $(if ($st) { $st.agents.agents.Count } else { $agents.Count })
-  cronsTotal      = @($rec | Where-Object { $_.kind -eq 'cron' }).Count
+  cronsTotal      = @($allRecent | Where-Object { $_.kind -eq 'cron' -or $_.key -like '*:cron:*' }).Count
   subagentsActive = 0
-  channels        = $(if ($st -and $st.channelSummary) { ($st.channelSummary.PSObject.Properties.Name -join ', ') } else { '' })
+  channels        = $(if ($st -and $st.channelSummary) { (@($st.channelSummary | ForEach-Object { if ($_ -is [string]) { $_ } elseif ($_.channel) { [string]$_.channel } elseif ($_.name) { [string]$_.name } }) -join ', ') } else { '' })
   sessions        = $sessRows
   agents          = $agents
 } | ConvertTo-Json -Depth 5 -Compress
@@ -165,7 +171,7 @@ if (Test-Path $conf.agentsRoot) {
           $c = $o.message.content
           if ($c -is [string]) { $txt = $c }
           else { foreach ($part in @($c)) { if ($part.type -eq 'text') { $txt += $part.text + ' ' } } }
-          while ($txt -match '<system-reminder>') { $txt = $txt -replace '(?s)<system-reminder>.*?</system-reminder>', '' }
+          do { $prevLen = $txt.Length; $txt = $txt -replace '(?s)<system-reminder>.*?</system-reminder>', '' } while ($txt.Length -lt $prevLen -and $txt -match '<system-reminder>')
           $txt = $txt -replace '<<<AUTOCLAW_USER_AUTHORED_REQUEST_START>>>', ' '
           $txt = $txt -replace '<<<AUTOCLAW_USER_AUTHORED_REQUEST_END>>>', ' '
           $txt = ($txt -replace '\s+', ' ').Trim()
@@ -239,7 +245,7 @@ $hourlyArr  = @($hourly.Values | Sort-Object h)
 # ---------- 7. statistiques cumulees ----------
 New-Item -ItemType Directory -Force -Path $TelemetryDir | Out-Null
 $aggPath = Join-Path $TelemetryDir 'stats-aggregates.json'
-$agg = @{ firstTs = $null; lastTs = $null; tokensTotal = 0; inputTokensTotal = 0; outputTokensTotal = 0; requestsTotal = 0; unknownRequestsTotal = 0; eventsTotal = 0; byModel = @{}; hours = @{}; lastAggregatedTs = $null }
+$agg = @{ firstTs = $null; lastTs = $null; tokensTotal = 0; inputTokensTotal = 0; outputTokensTotal = 0; requestsTotal = 0; unknownRequestsTotal = 0; eventsTotal = 0; byModel = @{}; lastAggregatedTs = $null }
 $aggRaw = SafeGet $aggPath 'aggregates'
 if ($aggRaw) {
   try {
@@ -254,7 +260,6 @@ if ($aggRaw) {
     $agg.eventsTotal      = [long]$a0.eventsTotal
     $agg.lastAggregatedTs = $a0.lastAggregatedTs
     if ($a0.byModel) { foreach ($p in $a0.byModel.PSObject.Properties) { $agg.byModel[$p.Name] = [long]$p.Value } }
-    if ($a0.hours)   { foreach ($p in $a0.hours.PSObject.Properties)   { $agg.hours[$p.Name]   = [long]$p.Value } }
   } catch { $script:errors.Add("aggregates load : $($_.Exception.Message)") }
 }
 
@@ -305,12 +310,9 @@ foreach ($e in $newEntries) {
   if (-not $agg.lastAggregatedTs -or $t -gt [datetime]$agg.lastAggregatedTs) { $agg.lastAggregatedTs = $e.ts }
 }
 
-# 7b. evenements + miroir historique immortel
+# 7b. miroir historique immortel (eventsTotal est recalcule plus bas
+#     comme somme autoritaire de cet historique)
 foreach ($b in $hourlyArr) {
-  $prev = 0
-  if ($agg.hours.ContainsKey($b.h)) { $prev = [long]$agg.hours[$b.h] }
-  if ($b.events -gt $prev) { $agg.eventsTotal += ([long]$b.events - $prev) }
-  $agg.hours[$b.h] = [long]$b.events
   $existed = $hourlyHist.ContainsKey($b.h)
   $hPrev = $(if ($existed) { $hourlyHist[$b.h] } else { $null })
   $hourlyHist[$b.h] = [pscustomobject]@{
@@ -333,11 +335,10 @@ $histLines = foreach ($k in ($hourlyHist.Keys | Sort-Object)) {
 }
 $histContent = (($histLines -join "`r`n") + "`r`n")
 if (-not (TryWrite $hourlyHistPath $histContent 'hourly-history.jsonl')) { $script:errors.Add('hourly-history.jsonl : ecriture echouee') }
+# eventsTotal : somme de l'historique horaire immortel. Auto-reparation des
+# anciens cumuls corrompus par la logique delta non persistee.
+$agg.eventsTotal = [long](($hourlyHist.Values | Measure-Object -Property events -Sum).Sum)
 $hourlyHistCount = $hourlyHist.Count
-
-# 7d. memoire buckets (72 h)
-$horizon = (Get-Date).AddHours(-72).ToString("yyyy-MM-ddTHH:00")
-@($agg.hours.Keys) | Where-Object { $_ -lt $horizon } | ForEach-Object { $agg.hours.Remove($_) }
 
 $aggObj = [pscustomobject]@{
   firstTs = $agg.firstTs; lastTs = $agg.lastTs
@@ -348,8 +349,12 @@ $aggObj = [pscustomobject]@{
 }
 
 # ---------- 8. ecriture des fichiers (chaque ecriture protegee) ----------
-$jJson = ($journalArr | ConvertTo-Json -Depth 4 -Compress); if (-not $jJson) { $jJson = '[]' }
-if ($journalArr.Count -eq 1) { $jJson = '[' + $jJson + ']' }
+# publication du journal : plafond journalMax applique ici, apres l'agregation
+# des totaux (qui reste calculee sur le journal complet)
+$jOut = $journalArr
+if ($jOut.Count -gt $conf.journalMax) { $jOut = @($jOut | Select-Object -Last $conf.journalMax) }
+$jJson = ($jOut | ConvertTo-Json -Depth 4 -Compress); if (-not $jJson) { $jJson = '[]' }
+if ($jOut.Count -eq 1) { $jJson = '[' + $jJson + ']' }
 $hJson = ($hourlyArr  | ConvertTo-Json -Depth 4 -Compress); if (-not $hJson) { $hJson = '[]' }
 if ($hourlyArr.Count  -eq 1) { $hJson = '[' + $hJson + ']' }
 $aJson = ($aggObj | ConvertTo-Json -Depth 5 -Compress)
@@ -380,4 +385,4 @@ $deg = ''
 if ($degraded.Count) { $deg = ' (degrade : ' + ($degraded -join ', ') + ')' }
 $errSummary = ''
 if ($script:errors.Count) { $errSummary = ' - ERREURS: ' + $script:errors.Count + ' [' + ($script:errors[0]) + ']' }
-Write-Output ("TDB OK $ts - journal=" + $journalArr.Count + " - aggTok=" + $agg.tokensTotal + " (in=" + $agg.inputTokensTotal + " out=" + $agg.outputTokensTotal + ") - evt=" + $agg.eventsTotal + " - unk=" + $agg.unknownRequestsTotal + " - hours=" + $hourlyHistCount + $deg + $errSummary)
+Write-Output ("TDB OK $ts - journal=" + $jOut.Count + " - aggTok=" + $agg.tokensTotal + " (in=" + $agg.inputTokensTotal + " out=" + $agg.outputTokensTotal + ") - evt=" + $agg.eventsTotal + " - unk=" + $agg.unknownRequestsTotal + " - hours=" + $hourlyHistCount + $deg + $errSummary)
