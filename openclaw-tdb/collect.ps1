@@ -171,6 +171,15 @@ if (Test-Path $conf.agentsRoot) {
           $tok = $null
           $tokenStatus = "unknown"
           if ($u -and $null -ne $u.totalTokens -and [long]$u.totalTokens -gt 0) { $tok = [long]$u.totalTokens; $tokenStatus = "reported" }
+          elseif ($u -and [long]$u.totalTokens -eq 0) {
+            $textLen = 0
+            foreach ($part in @($o.message.content)) {
+              if ($part.type -eq "text" -and $part.text) { $textLen += $part.text.Length }
+              elseif ($part.type -eq "thinking" -and $part.thinking) { $textLen += $part.thinking.Length }
+            }
+            $tok = [long][math]::Ceiling($textLen / 3.5)
+            $tokenStatus = "estimated"
+          }
           $journal.Add([pscustomobject]@{
             ts         = $tsCur.ToString("yyyy-MM-ddTHH:mm:sszzz")
             agent      = $agentId
@@ -190,7 +199,8 @@ if (Test-Path $conf.agentsRoot) {
                             default   { $o.message.stopReason } })
           })
           $hourly[$hKey].requests++
-          if ($tokenStatus -eq "reported") { $hourly[$hKey].tokens += $tok; $hourly[$hKey].reportedTokens += $tok } else { $hourly[$hKey].unknownRequests++ }
+          if ($tok) { $hourly[$hKey].tokens += $tok; $hourly[$hKey].reportedTokens += $tok }
+          if ($tokenStatus -eq "unknown") { $hourly[$hKey].unknownRequests++ }
         }
         $lastTs = $tsCur
       }
