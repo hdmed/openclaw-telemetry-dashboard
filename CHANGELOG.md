@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.1 — 2026-09-08
+
+### Ajouté
+- Carte **🎯 Consommation** : input + output réels (cache exclu)
+- Suivi `cacheReadTokens` par action, par heure et en agrégats
+- Estimation des tokens pour les providers muets (`gpt-5.6-luna` :
+  `usage.totalTokens = 0` → estimation par longueur de contenu,
+  marquée `estimated`)
+- Normalisation des noms de modèles dans byModel (fusion des variantes)
+
+### Corrigé
+- Les ~290 derniers événements affichaient 0 token (provider muet)
+
+## 0.3.0 — 2026-09-06
+
+### Ajouté
+- Gestion d'erreurs exhaustive : chaque écriture/lecture protégée
+  (`TryWrite` / `SafeGet`), résumé d'erreurs en fin d'exécution
+- Suivi `inputTokens` / `outputTokens` séparés (action, heure, agrégats)
+
+## 0.2.4 — 2026-09-05
+
+### Ajouté
+- Version initiale publique : aperçu du tableau de bord dans le README,
+  badges, wiki GitHub bilingue, i18n 4 langues (fr/en/es/zh)
+
+---
 ## 0.2.1 — 2026-09-06
 
 ### Corrigé

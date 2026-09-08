@@ -1,5 +1,6 @@
 # Données d'exécution locales (jamais committées)
 openclaw-tdb/telemetry/
+wiki/
 config.local.json
 
 # Système / éditeurs
