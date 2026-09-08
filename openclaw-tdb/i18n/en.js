@@ -130,5 +130,29 @@ window.TDB_I18N = {
 
   "hero.liveTag": "real time",
 
+  "chart.series.cumul": "Session cumulative",
+
+  "chart.series.turn": "Output / turn",
+
+  "chart.series.events": "Events",
+
+  "chart.series.requests": "Requests",
+
+  "chart.series.tokens": "Tokens",
+
+  "fmt.age.now": "just now",
+
+  "fmt.age.min": "{n} min ago",
+
+  "table.sessions.active": "active",
+
+  "table.sessions.repos": "idle",
+
+  "header.lastCollection.full": "🕐 last collection: {time} ({age})",
+
+  "kpi.totals.consumption": "🎯 Consumption",
+
+  "kpi.totals.consumption.sub": "input + output (cache excluded)",
+
   "fmt.date.unknown": "—"
 };

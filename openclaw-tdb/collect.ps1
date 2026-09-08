@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 #  TDB Collector v4 (portable) - OpenClaw Telemetry Dashboard
 #  - Interroge la CLI OpenClaw (status --json) si disponible
 #  - Extrait le journal des actions depuis les transcripts
@@ -59,6 +59,17 @@ $cli = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Fi
 
 $ts = (Get-Date).ToString("yyyy-MM-ddTHH:mm:sszzz")
 $st = $null; $main = $null; $rec = @(); $allRecent = @(); $agents = @(); $degraded = @()
+
+# ---------- S4 : alias de normalisation des modeles ----------
+$modelAlias = @{
+  'nemotron-3-ultra' = 'nvidia/nemotron-3-ultra-550b-a55b:free'
+}
+function NormalizeModel([string]$m) {
+  if (-not $m) { return 'unknown' }
+  if ($modelAlias.ContainsKey($m)) { return $modelAlias[$m] }
+  return $m
+}
+
 
 # ---------- 1. statut gateway ----------
 if ($cli) {
@@ -161,7 +172,7 @@ if (Test-Path $conf.agentsRoot) {
         $tsCur = [datetime]$o.timestamp
         $hKey = $tsCur.ToString("yyyy-MM-ddTHH:00")
         if (-not $hourly.ContainsKey($hKey)) {
-          $hourly[$hKey] = [pscustomobject]@{ h = $hKey; events = 0; requests = 0; tokens = 0; reportedTokens = 0; inputTokens = 0; outputTokens = 0; unknownRequests = 0 }
+          $hourly[$hKey] = [pscustomobject]@{ h = $hKey; events = 0; requests = 0; tokens = 0; reportedTokens = 0; inputTokens = 0; outputTokens = 0; cacheReadTokens = 0; unknownRequests = 0 }
         }
         $hourly[$hKey].events++
 
@@ -217,6 +228,7 @@ if (Test-Path $conf.agentsRoot) {
             tokens     = $tok
             inputTokens  = $tokIn
             outputTokens = $tokOut
+            cacheReadTokens = $(if ($u -and $null -ne $u.cacheRead) { [long]$u.cacheRead } else { $null })
             tokenStatus = $tokenStatus
             state      = $(switch ($o.message.stopReason) {
                             'stop'    { '✅ terminé' }
@@ -230,6 +242,7 @@ if (Test-Path $conf.agentsRoot) {
           if ($tokenStatus -eq "reported") { $hourly[$hKey].reportedTokens += $tok }
           if ($tokIn) { $hourly[$hKey].inputTokens += $tokIn }
           if ($tokOut) { $hourly[$hKey].outputTokens += $tokOut }
+          if ($tokenStatus -eq "reported" -and $u -and $null -ne $u.cacheRead) { $hourly[$hKey].cacheReadTokens += [long]$u.cacheRead }
           if ($tokenStatus -eq "unknown") { $hourly[$hKey].unknownRequests++ }
         }
         $lastTs = $tsCur
@@ -245,7 +258,7 @@ $hourlyArr  = @($hourly.Values | Sort-Object h)
 # ---------- 7. statistiques cumulees ----------
 New-Item -ItemType Directory -Force -Path $TelemetryDir | Out-Null
 $aggPath = Join-Path $TelemetryDir 'stats-aggregates.json'
-$agg = @{ firstTs = $null; lastTs = $null; tokensTotal = 0; inputTokensTotal = 0; outputTokensTotal = 0; requestsTotal = 0; unknownRequestsTotal = 0; eventsTotal = 0; byModel = @{}; lastAggregatedTs = $null }
+$agg = @{ firstTs = $null; lastTs = $null; tokensTotal = 0; inputTokensTotal = 0; outputTokensTotal = 0; cacheReadTokensTotal = 0; requestsTotal = 0; unknownRequestsTotal = 0; eventsTotal = 0; byModel = @{}; lastAggregatedTs = $null }
 $aggRaw = SafeGet $aggPath 'aggregates'
 if ($aggRaw) {
   try {
@@ -257,9 +270,10 @@ if ($aggRaw) {
     $agg.unknownRequestsTotal = [long]$(if ($null -ne $a0.unknownRequestsTotal) { $a0.unknownRequestsTotal } else { 0 })
     $agg.inputTokensTotal  = [long]$(if ($null -ne $a0.inputTokensTotal) { $a0.inputTokensTotal } else { 0 })
     $agg.outputTokensTotal = [long]$(if ($null -ne $a0.outputTokensTotal) { $a0.outputTokensTotal } else { 0 })
+    $agg.cacheReadTokensTotal = [long]$(if ($null -ne $a0.cacheReadTokensTotal) { $a0.cacheReadTokensTotal } else { 0 })
     $agg.eventsTotal      = [long]$a0.eventsTotal
     $agg.lastAggregatedTs = $a0.lastAggregatedTs
-    if ($a0.byModel) { foreach ($p in $a0.byModel.PSObject.Properties) { $agg.byModel[$p.Name] = [long]$p.Value } }
+    if ($a0.byModel) { foreach ($p in $a0.byModel.PSObject.Properties) { $cn = NormalizeModel $p.Name; if ($agg.byModel.ContainsKey($cn)) { $agg.byModel[$cn] += [long]$p.Value } else { $agg.byModel[$cn] = [long]$p.Value } } }
   } catch { $script:errors.Add("aggregates load : $($_.Exception.Message)") }
 }
 
@@ -300,11 +314,12 @@ foreach ($e in $newEntries) {
   if ($e.tokens) { $agg.tokensTotal += [long]$e.tokens }
   if ($e.inputTokens) { $agg.inputTokensTotal += [long]$e.inputTokens }
   if ($e.outputTokens) { $agg.outputTokensTotal += [long]$e.outputTokens }
+  if ($e.cacheReadTokens) { $agg.cacheReadTokensTotal += [long]$e.cacheReadTokens }
   $agg.requestsTotal++
   if ($e.tokenStatus -eq "unknown") { $agg.unknownRequestsTotal++ }
   if (-not $agg.firstTs -or $t -lt [datetime]$agg.firstTs) { $agg.firstTs = $e.ts }
   if (-not $agg.lastTs  -or $t -gt [datetime]$agg.lastTs)  { $agg.lastTs  = $e.ts }
-  $m = $(if ($e.model) { $e.model } else { 'unknown' })
+  $m = NormalizeModel $(if ($e.model) { $e.model } else { 'unknown' })
   if ($agg.byModel.ContainsKey($m)) { $agg.byModel[$m] += $(if ($e.tokens) { [long]$e.tokens } else { 0 }) }
   else { $agg.byModel[$m] = $(if ($e.tokens) { [long]$e.tokens } else { 0 }) }
   if (-not $agg.lastAggregatedTs -or $t -gt [datetime]$agg.lastAggregatedTs) { $agg.lastAggregatedTs = $e.ts }
@@ -342,7 +357,7 @@ $hourlyHistCount = $hourlyHist.Count
 
 $aggObj = [pscustomobject]@{
   firstTs = $agg.firstTs; lastTs = $agg.lastTs
-  tokensTotal = $agg.tokensTotal; inputTokensTotal = $agg.inputTokensTotal; outputTokensTotal = $agg.outputTokensTotal
+  tokensTotal = $agg.tokensTotal; inputTokensTotal = $agg.inputTokensTotal; outputTokensTotal = $agg.outputTokensTotal; cacheReadTokensTotal = $agg.cacheReadTokensTotal
   requestsTotal = $agg.requestsTotal; unknownRequestsTotal = $agg.unknownRequestsTotal; eventsTotal = $agg.eventsTotal
   byModel = $agg.byModel; lastAggregatedTs = $agg.lastAggregatedTs
   hourlyHistoryCount = $hourlyHistCount

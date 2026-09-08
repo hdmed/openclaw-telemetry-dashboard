@@ -148,5 +148,29 @@ window.TDB_I18N = {
   // Formattage dates
   "hero.liveTag": "temps réel",
 
+  "chart.series.cumul": "Cumul session",
+
+  "chart.series.turn": "Sortie / tour",
+
+  "chart.series.events": "Événements",
+
+  "chart.series.requests": "Requêtes",
+
+  "chart.series.tokens": "Tokens",
+
+  "fmt.age.now": "à l'instant",
+
+  "fmt.age.min": "il y a {n} min",
+
+  "table.sessions.active": "actif",
+
+  "table.sessions.repos": "repos",
+
+  "header.lastCollection.full": "🕐 dernière collecte : {time} ({age})",
+
+  "kpi.totals.consumption": "🎯 Consommation",
+
+  "kpi.totals.consumption.sub": "input + output (cache exclu)",
+
   "fmt.date.unknown": "—"
 };

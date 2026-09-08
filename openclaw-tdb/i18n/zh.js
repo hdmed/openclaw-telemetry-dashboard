@@ -130,5 +130,29 @@ window.TDB_I18N = {
 
   "hero.liveTag": "实时",
 
+  "chart.series.cumul": "会话累计",
+
+  "chart.series.turn": "单轮输出",
+
+  "chart.series.events": "事件",
+
+  "chart.series.requests": "请求",
+
+  "chart.series.tokens": "令牌",
+
+  "fmt.age.now": "刚刚",
+
+  "fmt.age.min": "{n} 分钟前",
+
+  "table.sessions.active": "活跃",
+
+  "table.sessions.repos": "空闲",
+
+  "header.lastCollection.full": "🕐 上次采集：{time}（{age}）",
+
+  "kpi.totals.consumption": "🎯 消耗",
+
+  "kpi.totals.consumption.sub": "输入 + 输出（不含缓存）",
+
   "fmt.date.unknown": "—"
 };

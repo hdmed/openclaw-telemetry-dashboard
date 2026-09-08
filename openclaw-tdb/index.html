@@ -137,6 +137,7 @@
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.requests">🔑 Requêtes</div><div class="val cyan" id="tReq">-</div><div class="sub" data-i18n="kpi.totals.requests.sub">appels aux modèles</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.tokens">🧮 Tokens</div><div class="val teal" id="tTok">-</div><div class="sub" data-i18n="kpi.totals.tokens.sub">total période</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.models">🧠 Modèles</div><div class="val violet" id="tMdl">-</div><div class="sub" data-i18n="kpi.totals.models.sub">distincts utilisés</div></div>
+  <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.consumption">
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.hours">🕐 Heures enregistrées</div><div class="val accent" id="tHours">—</div><div class="sub" data-i18n="kpi.totals.hours.sub">historique horaire immortel</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.unknown">❔ Tokens inconnus</div><div class="val" id="tUnknown">—</div><div class="sub" data-i18n="kpi.totals.unknown.sub">requêtes sans usage provider</div></div>
 </section>
@@ -274,7 +275,7 @@ function pullRemote(manual){
   s1.onload=()=>{const r=window.TDB_REMOTE,last=HIST[HIST.length-1];
     if(r&&(!last||new Date(r.ts)>new Date(last.ts))){HIST.push(norm(r));if(HIST.length>720)HIST=HIST.slice(-720);try{localStorage.setItem(KEY,JSON.stringify(HIST))}catch(e){}render(r);news=true;if(manual)toast('✅ Nouvelle collecte chargée - '+hhmm(r.ts))}
     fin()};
-  s1.onerror=()=>{if(manual)toast('Aucune télémétrie disque trouvée (telemetry/latest.js).');fin()};
+  s1.onerror=()=>{if(manual)toast(t('toast.noData'));fin()};
   document.body.appendChild(s1);
   const s2=document.createElement('script'); s2.src='telemetry/journal.js?ts='+Date.now();
   s2.onload=()=>{JOURNAL=window.TDB_JOURNAL||[];HOURLY=window.TDB_HOURLY||[];jp=1;refreshDynamic();news=true;fin()};
@@ -297,7 +298,7 @@ function pullRemote(manual){
 /* ---------- rendu statique (dernier snapshot) ---------- */
 function render(d){
   $('empty').style.display='none';
-  $('kTok').textContent=fmtK(d.totalTokens); $('kTokSub').textContent='+'+fmt(d.runOut)+' tokens au dernier tour';
+  $('kTok').textContent=fmtK(d.totalTokens); $('kTokSub').textContent=t('kpi.session.tokens.sub',{n:fmt(d.runOut||0)});
   $('kCost').textContent=fmtCost(d.costUsd);
   $('kCache').textContent=d.cacheHitPct==null?'-':d.cacheHitPct+' %'; $('kCacheSub').textContent=fmtK(d.cachedTokens)+' tokens cachés';
   const pct=(d.contextTokens&&d.contextLimit)?Math.round(d.contextTokens/d.contextLimit*100):null;
@@ -307,10 +308,10 @@ function render(d){
   $('mAgents').textContent=d.agentsTotal??'-'; $('mCrons').textContent=d.cronsTotal??0;
   $('mSubs').textContent=d.subagentsActive??0; $('mModel').textContent=d.model;
   $('mComp').textContent=d.compactions??'-'; $('mChan').textContent=d.channels;
-  $('tAgents').tBodies[0].innerHTML=(d.agents.length?d.agents:[{id:'main',name:'main',model:d.model,active:1}]).map(a=>'<tr><td style="font-family:var(--mono)">'+a.id+'</td><td>'+a.name+'</td><td style="font-family:var(--mono);font-size:11.5px">'+a.model+'</td><td style="text-align:right"><span class="pill'+(a.active?'':' idle')+'">'+(a.active?'● actif':'prêt')+'</span></td></tr>').join('');
+  $('tAgents').tBodies[0].innerHTML=(d.agents.length?d.agents:[{id:'main',name:'main',model:d.model,active:1}]).map(a=>'<tr><td style="font-family:var(--mono)">'+a.id+'</td><td>'+a.name+'</td><td style="font-family:var(--mono);font-size:11.5px">'+a.model+'</td><td style="text-align:right"><span class="pill'+(a.active?'':' idle')+'">'+(a.active?t('table.agents.active'):t('table.agents.idle'))+'</span></td></tr>').join('');
   $('tSess').tBodies[0].innerHTML=(d.sessions.length?d.sessions:[{key:'-',channel:'-',model:d.model,tokens:d.totalTokens,cost:d.costUsd,status:'running'}]).map(s=>'<tr><td style="font-family:var(--mono);font-size:11.5px">'+s.key+'</td><td>'+s.channel+'</td><td style="font-family:var(--mono);font-size:11px">'+s.model+'</td><td class="num">'+fmtK(s.tokens)+'</td><td class="num">'+fmtCost(s.cost)+'</td><td style="text-align:right"><span class="pill">'+(s.status||'running')+'</span></td></tr>').join('');
   if(d.runtimeVersion){ $('bGw').textContent='⚙️ Gateway '+d.runtimeVersion; }
-  $('bLast').textContent='🕐 dernière collecte : '+hhmm(d.ts)+' ('+ageTxt(d.ts)+')';
+  $('bLast').textContent=t('header.lastCollection.full',{time:hhmm(d.ts),age:ageTxt(d.ts)});
   if(window.Chart) drawBase(d);
 }
 
@@ -335,10 +336,18 @@ function renderTotals(){
     $('perNote').textContent='cumulés depuis le '+(A.firstTs?new Date(A.firstTs).toLocaleDateString('fr-FR'):'-');
   } else {
     $('tEvt').textContent=fmt(evt); $('tReq').textContent=fmt(rs.length);
+    let cin=0,cout=0;
+    HOURLY.filter(b=>inPeriod(b.h+':00')).forEach(b=>{cin+=(b.inputTokens||0);cout+=(b.outputTokens||0)});
+    $('tConsumption').textContent=fmtK(cin+cout);
+    $('tConsumptionSub').textContent='in '+fmtK(cin)+' · out '+fmtK(cout);
     $('tTok').textContent=fmtK(tok); $('tMdl').textContent=models.size||'0';
     $('perNote').textContent='';
   }
-  $('tHours').textContent=fmt((window.TDB_AGGR&&window.TDB_AGGR.hourlyHistoryCount!=null)?window.TDB_AGGR.hourlyHistoryCount:0);
+  $('tHours').textContent=fmt((A&&A.hourlyHistoryCount!=null)?A.hourlyHistoryCount:0);
+  const cons=(A?(A.inputTokensTotal||0)+(A.outputTokensTotal||0):0);
+  const cache=(A?(A.cacheReadTokensTotal||0):0);
+  $('tConsumption').textContent=fmtK(cons);
+  $('tConsumptionSub').textContent='in '+fmtK(A?A.inputTokensTotal:0)+' · out '+fmtK(A?A.outputTokensTotal:0)+' · cache '+fmtK(cache);
   $('tUnknown').textContent=fmt((A&&A.unknownRequestsTotal!=null)?A.unknownRequestsTotal:0);
 }
 
@@ -368,9 +377,9 @@ function renderHourly(){
   }
   const labels=bs.map(b=>hhlabel(b.h));
   const cd={labels,datasets:[
-    {type:'bar',label:'Événements',data:bs.map(b=>b.events),backgroundColor:'rgba(56,189,248,.55)',borderRadius:4,yAxisID:'y',barPercentage:.6},
-    {type:'bar',label:'Requêtes',data:bs.map(b=>b.requests),backgroundColor:'rgba(255,122,69,.6)',borderRadius:4,yAxisID:'y',barPercentage:.6},
-    {type:'line',label:'Tokens',data:bs.map(b=>b.tokens),borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,.12)',yAxisID:'y1',tension:.35,pointRadius:2,borderWidth:2,fill:true}]};
+    {type:'bar',label:t('chart.series.events'),data:bs.map(b=>b.events),backgroundColor:'rgba(56,189,248,.55)',borderRadius:4,yAxisID:'y',barPercentage:.6},
+    {type:'bar',label:t('chart.series.requests'),data:bs.map(b=>b.requests),backgroundColor:'rgba(255,122,69,.6)',borderRadius:4,yAxisID:'y',barPercentage:.6},
+    {type:'line',label:t('chart.series.tokens'),data:bs.map(b=>b.tokens),borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,.12)',yAxisID:'y1',tension:.35,pointRadius:2,borderWidth:2,fill:true}]};
   const opt={responsive:true,maintainAspectRatio:false,animation:{duration:350},interaction:{mode:'index',intersect:false},
     plugins:{legend:{labels:{boxWidth:10,font:{size:10.5}}}},
     scales:{y:{position:'left',title:{display:true,text:'messages',font:{size:9}}},y1:{position:'right',grid:{display:false},title:{display:true,text:'tokens',font:{size:9}}}}};
@@ -389,8 +398,8 @@ function renderJournal(){
   const pages=Math.max(1,Math.ceil(rs.length/PAGE));
   jp=Math.min(Math.max(1,jp),pages);
   const start=(jp-1)*PAGE, slice=rs.slice(start,start+PAGE);
-  $('pgInfo').textContent='Page '+jp+' / '+pages;
-  $('pgTotal').textContent=rs.length+' action(s) au total · par lot de '+PAGE;
+  $('pgInfo').textContent=t('journal.pager.info',{p:jp,n:pages});
+  $('pgTotal').textContent=t('journal.total',{n:rs.length,batch:PAGE});
   $('pgFirst').disabled=jp===1; $('pgPrev').disabled=jp===1; $('pgNext').disabled=jp>=pages; $('pgLast').disabled=jp>=pages;
   $('jEmpty').style.display=slice.length?'none':'block';
   $('tJournal').tBodies[0].innerHTML=slice.map((r,i)=>{
@@ -419,18 +428,18 @@ function drawBase(d){
   const t=charts.tokens&&charts.tokens.data;
   if(t){t.labels=labels;t.datasets[0].data=L.map(p=>p.totalTokens);t.datasets[1].data=L.map(p=>p.runOut);charts.tokens.update()}
   else{charts.tokens=new Chart($('cTokens'),{type:'bar',data:{labels,datasets:[
-      {type:'line',label:'Cumul session',data:L.map(p=>p.totalTokens),borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.12)',yAxisID:'y',tension:.35,pointRadius:2.5,borderWidth:2,fill:true},
-      {type:'bar',label:'Sortie / tour',data:L.map(p=>p.runOut),backgroundColor:'rgba(255,122,69,.55)',borderRadius:4,yAxisID:'y1',barPercentage:.55}]},
+      {type:'line',label:t('chart.series.cumul'),data:L.map(p=>p.totalTokens),borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.12)',yAxisID:'y',tension:.35,pointRadius:2.5,borderWidth:2,fill:true},
+      {type:'bar',label:t('chart.series.turn'),data:L.map(p=>p.runOut),backgroundColor:'rgba(255,122,69,.55)',borderRadius:4,yAxisID:'y1',barPercentage:.55}]},
     options:{...common,scales:{y:{position:'left',title:{display:true,text:'cumul',font:{size:9}}},y1:{position:'right',grid:{display:false},title:{display:true,text:'tour',font:{size:9}}}}}})}
 }
 
 /* ---------- divers ---------- */
-function ageTxt(ts){if(!ts)return'-';const m=Math.round((Date.now()-new Date(ts).getTime())/60000);if(m<1)return"à l'instant";if(m===1)return'il y a 1 min';return'il y a '+m+' min'}
+function ageTxt(ts){if(!ts)return'-';const m=Math.round((Date.now()-new Date(ts).getTime())/60000);if(m<1)return t('fmt.age.now');return t('fmt.age.min',{n:m})}
 function freshness(){
   if(!HIST.length)return;
   const m=(Date.now()-new Date(HIST[HIST.length-1].ts).getTime())/60000, b=$('bFresh');
   b.className='badge'+(m>30?' bad':m>12?' warn':'');
-  $('bFreshTxt').textContent=m>30?'⚠️ collecte bloquée':m>12?'données anciennes':'temps réel';
+  $('bFreshTxt').textContent=m>30?t('header.freshness.bad'):m>12?t('header.freshness.warn'):t('header.freshness.ok');
 }
 let toastT; function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),4200)}
 
@@ -452,7 +461,7 @@ window.TDB={
       const last=HIST[HIST.length-1];
       if(last&&(!lastTs||new Date(last.ts)>new Date(lastTs))){
         b.classList.remove('busy'); b.textContent='✓ à jour'; b.style.background='linear-gradient(135deg,#34d399,#2dd4bf)';
-        toast('✅ Nouvelle collecte appliquée ('+hhmm(last.ts)+').');
+        toast(t('toast.applied',{time:hhmm(last.ts)}));
         setTimeout(()=>{b.textContent='⟳ Synchroniser';b.style.background='';},3500);
         return;
       }
