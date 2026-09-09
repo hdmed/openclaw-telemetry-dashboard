@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><script src="chart.umd.min.js"></script></head>
+<body style="background:#0b0f17;color:#fff;font-family:sans-serif">
+<h1 id="status">test...</h1>
+<canvas id="c" width="400" height="200"></canvas>
+<script>
+try {
+  if (typeof Chart === 'undefined') { document.getElementById('status').textContent = 'ECHEC: Chart undefined'; }
+  else {
+    new Chart(document.getElementById('c'), { type: 'bar', data: { labels: ['A','B','C'], datasets: [{ label: 'test', data: [10,20,30], backgroundColor: '#ff7a45' }] } });
+    document.getElementById('status').textContent = 'OK: Chart.js ' + Chart.version + ' fonctionne';
+  }
+} catch (e) { document.getElementById('status').textContent = 'EXCEPTION: ' + e.message; }
+</script>
+</body></html>

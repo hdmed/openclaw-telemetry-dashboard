@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OpenClaw · TDB Télémétrie</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#0b0f17; --card:rgba(255,255,255,.05); --border:rgba(255,255,255,.10);
@@ -138,6 +138,7 @@
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.tokens">🧮 Tokens</div><div class="val teal" id="tTok">-</div><div class="sub" data-i18n="kpi.totals.tokens.sub">total période</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.models">🧠 Modèles</div><div class="val violet" id="tMdl">-</div><div class="sub" data-i18n="kpi.totals.models.sub">distincts utilisés</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.consumption">
+  <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.consumption">🎯 Consommation</div><div class="val teal" id="tConsumption">—</div><div class="sub" id="tConsumptionSub" data-i18n="kpi.totals.consumption.sub">input + output (cache exclu)</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.hours">🕐 Heures enregistrées</div><div class="val accent" id="tHours">—</div><div class="sub" data-i18n="kpi.totals.hours.sub">historique horaire immortel</div></div>
   <div class="card kpi"><div class="lbl" data-i18n="kpi.totals.unknown">❔ Tokens inconnus</div><div class="val" id="tUnknown">—</div><div class="sub" data-i18n="kpi.totals.unknown.sub">requêtes sans usage provider</div></div>
 </section>
@@ -207,10 +208,18 @@
   <div style="display:flex;margin-top:8px"><span class="pinfo" id="pgTotal" style="margin-left:auto"></span></div>
 </section>
 
-<footer>
+<footer><span id="footerDebug" style="font-family:var(--mono);font-size:11px"></span>
   <span>🦞 TDB v0.3.1 · données 100 % locales · <span style="font-family:var(--mono)">telemetry/</span> hors dépôt Git · docs : README + docs\</span>
 </footer>
 
+<script>
+function dbg(msg){ try{ var d=document.getElementById('footerDebug'); if(d){ d.textContent='⚠️ '+msg; d.style.color='#f87171'; } document.title='⚠️ TDB: '+msg; }catch(e){} }
+window.addEventListener('error', function(e){ dbg('JS: '+(e.message||'erreur')+' (ligne '+(e.lineno||'?')+')'); });
+window.addEventListener('unhandledrejection', function(e){ dbg('Promise: '+((e.reason&&e.reason.message)?e.reason.message:'rejet')); });
+
+window.addEventListener('error', function(e){ var d=document.getElementById('footerDebug'); var msg='⚠️ JS: '+(e.message||'erreur inconnue')+' (ligne '+(e.lineno||'?')+')'; if(d){ d.textContent=msg; d.style.color='#f87171'; } document.title='⚠️ TDB: '+msg; });
+window.addEventListener('unhandledrejection', function(e){ var d=document.getElementById('footerDebug'); var msg='⚠️ Promise: '+((e.reason&&e.reason.message)?e.reason.message:'rejet'); if(d){ d.textContent=msg; d.style.color='#f87171'; } });
+</script>
 <div class="toast" id="toast"></div>
 <div class="empty" id="empty">⏳ En attente de la première collecte de télémétrie...</div>
 
@@ -275,23 +284,23 @@ function pullRemote(manual){
   s1.onload=()=>{const r=window.TDB_REMOTE,last=HIST[HIST.length-1];
     if(r&&(!last||new Date(r.ts)>new Date(last.ts))){HIST.push(norm(r));if(HIST.length>720)HIST=HIST.slice(-720);try{localStorage.setItem(KEY,JSON.stringify(HIST))}catch(e){}render(r);news=true;if(manual)toast('✅ Nouvelle collecte chargée - '+hhmm(r.ts))}
     fin()};
-  s1.onerror=()=>{if(manual)toast(t('toast.noData'));fin()};
+  s1.onerror=()=>{ dbg('latest.js INTROUVABLE — collectez via collect.bat'); fin() };
   document.body.appendChild(s1);
   const s2=document.createElement('script'); s2.src='telemetry/journal.js?ts='+Date.now();
   s2.onload=()=>{JOURNAL=window.TDB_JOURNAL||[];HOURLY=window.TDB_HOURLY||[];jp=1;refreshDynamic();news=true;fin()};
-  s2.onerror=()=>{fin()};
+  s2.onerror=()=>{ dbg('journal.js INTROUVABLE — relancez collect.bat'); fin() };
   document.body.appendChild(s2);
   const s3=document.createElement('script'); s3.src='telemetry/aggregates.js?ts='+Date.now();
   s3.onload=()=>{refreshDynamic();renderMeta();fin()};
-  s3.onerror=()=>{fin()};
+  s3.onerror=()=>{ dbg('aggregates.js INTROUVABLE'); fin() };
   document.body.appendChild(s3);
   const s4=document.createElement('script'); s4.src='telemetry/meta.js?ts='+Date.now();
   s4.onload=()=>{renderMeta();fin()};
-  s4.onerror=()=>{fin()};
+  s4.onerror=()=>{ dbg('meta.js INTROUVABLE'); fin() };
   document.body.appendChild(s4);
   const s5=document.createElement('script'); s5.src='telemetry/hourly-history.js?ts='+Date.now();
   s5.onload=()=>{if(period==='tout')renderHourly();fin()};
-  s5.onerror=()=>{fin()};
+  s5.onerror=()=>{ dbg('hourly-history.js INTROUVABLE'); fin() };
   document.body.appendChild(s5);
 }
 
