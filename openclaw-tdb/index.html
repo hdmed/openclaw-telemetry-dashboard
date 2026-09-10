@@ -434,8 +434,8 @@ function drawBase(d){
   const L=HIST.slice(-60), labels=L.map(p=>hhmm(p.ts));
   Chart.defaults.color='#8b98ad'; Chart.defaults.borderColor='rgba(255,255,255,.06)';
   const common={responsive:true,maintainAspectRatio:false,animation:{duration:350},plugins:{legend:{labels:{boxWidth:10,font:{size:10.5}}}}};
-  const t=charts.tokens&&charts.tokens.data;
-  if(t){t.labels=labels;t.datasets[0].data=L.map(p=>p.totalTokens);t.datasets[1].data=L.map(p=>p.runOut);charts.tokens.update()}
+  const tokChart=charts.tokens&&charts.tokens.data;
+  if(tokChart){tokChart.labels=labels;tokChart.datasets[0].data=L.map(p=>p.totalTokens);tokChart.datasets[1].data=L.map(p=>p.runOut);charts.tokens.update()}
   else{charts.tokens=new Chart($('cTokens'),{type:'bar',data:{labels,datasets:[
       {type:'line',label:t('chart.series.cumul'),data:L.map(p=>p.totalTokens),borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.12)',yAxisID:'y',tension:.35,pointRadius:2.5,borderWidth:2,fill:true},
       {type:'bar',label:t('chart.series.turn'),data:L.map(p=>p.runOut),backgroundColor:'rgba(255,122,69,.55)',borderRadius:4,yAxisID:'y1',barPercentage:.55}]},
@@ -450,7 +450,7 @@ function freshness(){
   b.className='badge'+(m>30?' bad':m>12?' warn':'');
   $('bFreshTxt').textContent=m>30?t('header.freshness.bad'):m>12?t('header.freshness.warn'):t('header.freshness.ok');
 }
-let toastT; function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),4200)}
+let toastT; function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),4200)}
 
 window.TDB={
   applyData(raw){const d=norm(raw);HIST.push(d);if(HIST.length>720)HIST=HIST.slice(-720);try{localStorage.setItem(KEY,JSON.stringify(HIST))}catch(e){}render(d);freshness()},
